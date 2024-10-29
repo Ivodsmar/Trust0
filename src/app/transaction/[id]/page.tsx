@@ -1,294 +1,206 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AlertCircle, Upload } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { useProfiles } from '@/contexts/ProfileContext'
-import { useTransactions } from '@/contexts/TransactionContext'
+import React, { createContext, useContext, useState, useEffect } from 'react'
 
-export default function TransactionPage() {
-  const { id } = useParams()
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const { profiles, currentProfile, updateProfileBalance, getProfileById, updateFinancierFunds } = useProfiles()
-  const { addTransaction } = useTransactions()
-  const [selectedFinancier, setSelectedFinancier] = useState('')
-  const [loanAmount, setLoanAmount] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [transactionDetails, setTransactionDetails] = useState({
-    type: '',
-    price: 0,
-    quantity: 0,
-    commodity: '',
-    traderName: '',
+export type Interest = {
+  buy: string[]
+  sell: string[]
+  finance: string[]
+}
+
+export type Profile = {
+  id: string
+  name: string
+  email?: string
+  bio?: string
+  balance: number
+  type: 'trader' | 'financier'
+  interests: Interest
+  totalFunds?: number
+  availableFunds?: number
+  loans?: { [financierId: string]: number } // Track loan amounts owed per financier
+}
+
+type ProfileContextType = {
+  profiles: Profile[]
+  currentProfile: Profile | null
+  setCurrentProfile: (profile: Profile | null) => void
+  updateProfileBalance: (id: string, newBalance: number) => void
+  addProfile: (profile: Omit<Profile, 'id'>) => void
+  getProfileById: (id: string) => Profile | undefined
+  updateFinancierFunds: (traderId: string, financierId: string, loanAmount: number) => void
+  updateProfileInterests: (id: string, newInterests: Interest) => void
+  repayLoan: (traderId: string, financierId: string, amount: number) => void
+}
+
+const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
+
+export const useProfiles = () => {
+  const context = useContext(ProfileContext)
+  if (!context) {
+    throw new Error('useProfiles must be used within a ProfileProvider')
+  }
+  return context
+}
+
+const initialProfiles: Profile[] = [
+  { 
+    id: '1', 
+    name: 'Trader A', 
+    balance: 100000, 
+    type: 'trader', 
+    interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] },
+    loans: {} // Start with no loans
+  },
+  { 
+    id: '2', 
+    name: 'Trader B', 
+    balance: 150000, 
+    type: 'trader', 
+    interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] },
+    loans: {} // Start with no loans
+  },
+  { 
+    id: '3', 
+    name: 'Financier X', 
+    balance: 500000, 
+    type: 'financier', 
+    totalFunds: 500000, 
+    availableFunds: 500000, 
+    interests: { buy: [], sell: [], finance: ['Invoice Financing', 'Trade Finance'] }
+  },
+]
+
+export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [profiles, setProfiles] = useState<Profile[]>(() => {
+    if (typeof window !== 'undefined') {
+      const storedProfiles = localStorage.getItem('profiles')
+      return storedProfiles ? JSON.parse(storedProfiles) : initialProfiles
+    }
+    return initialProfiles
   })
-  const [counterparty, setCounterparty] = useState<any>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null)
 
   useEffect(() => {
-    setTransactionDetails({
-      type: searchParams.get('type') || '',
-      price: Number(searchParams.get('price')) || 0,
-      quantity: Number(searchParams.get('quantity')) || 0,
-      commodity: searchParams.get('commodity') || '',
-      traderName: searchParams.get('traderName') || '',
-    })
-
-    const traderName = searchParams.get('traderName')
-    if (traderName) {
-      const foundCounterparty = profiles.find(p => p.name === traderName)
-      if (foundCounterparty) {
-        setCounterparty(foundCounterparty)
-      } else {
-        setError(`Counterparty not found for name: ${traderName}`)
-        console.error(`Counterparty not found for name: ${traderName}`)
-      }
-    } else {
-      setError('Trader name not provided in search parameters')
-      console.error('Trader name not provided in search parameters')
+    if (profiles.length > 0 && !currentProfile) {
+      setCurrentProfile(profiles[0])
     }
-  }, [searchParams, profiles])
+  }, [profiles, currentProfile])
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      setFile(event.target.files[0])
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('profiles', JSON.stringify(profiles))
     }
-  }
+  }, [profiles])
 
-  const analyzeContract = async () => {
-    if (!file) return
-
-    setIsAnalyzing(true)
-    setAnalysisResult('Analyzing contract...')
-
-    try {
-      const fileContents = await file.text()
-
-      const response = await fetch('/api/analyze-contract', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ contractText: fileContents }),
-      })
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error('Rate limit exceeded. Please try again in a few moments.')
-        }
-        throw new Error('Failed to analyze contract')
+  // Ensure currentProfile stays in sync with profiles
+  useEffect(() => {
+    if (currentProfile) {
+      const updatedProfile = profiles.find(profile => profile.id === currentProfile.id)
+      if (updatedProfile) {
+        setCurrentProfile(updatedProfile)
       }
+    }
+  }, [profiles, currentProfile])
 
-      const data = await response.json()
-      setAnalysisResult(data.analysis)
-    } catch (error) {
-      console.error('Error analyzing contract:', error)
-      setAnalysisResult(
-        error instanceof Error ? error.message : 'An error occurred while analyzing the contract. Please try again.'
+  const updateProfileBalance = (id: string, newBalance: number) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile =>
+        profile.id === id
+          ? {
+              ...profile,
+              balance: newBalance,
+              availableFunds: profile.type === 'financier' ? newBalance : undefined,
+              totalFunds: profile.type === 'financier' ? (profile.totalFunds || newBalance) : undefined
+            }
+          : profile
       )
-    } finally {
-      setIsAnalyzing(false)
-    }
-  }
-
-  const handleTransaction = () => {
-    if (!currentProfile || !counterparty) {
-      setError('Current profile or counterparty not found')
-      return
-    }
-
-    const totalAmount = transactionDetails.price * transactionDetails.quantity
-    let loanedAmount = 0
-
-    if (selectedFinancier && loanAmount) {
-      loanedAmount = parseFloat(loanAmount)
-      const financier = getProfileById(selectedFinancier)
-      if (financier && financier.balance >= loanedAmount) {
-        updateFinancierFunds(financier.id, -loanedAmount)
-        updateProfileBalance(currentProfile.id, currentProfile.balance + loanedAmount)
-      } else {
-        setError('Insufficient financier balance')
-        return
-      }
-    }
-
-    if (transactionDetails.type === 'buy') {
-      if (currentProfile.balance >= totalAmount) {
-        updateProfileBalance(currentProfile.id, currentProfile.balance - totalAmount)
-        updateProfileBalance(counterparty.id, counterparty.balance + totalAmount)
-        addTransaction({
-          type: 'buy',
-          commodity: transactionDetails.commodity,
-          quantity: transactionDetails.quantity,
-          price: transactionDetails.price,
-          total: totalAmount,
-          buyerId: currentProfile.id,
-          sellerId: counterparty.id,
-          financierId: selectedFinancier || undefined,
-          loanAmount: loanedAmount,
-        })
-        if (loanedAmount > 0) {
-          addTransaction({
-            type: 'finance',
-            commodity: 'Loan',
-            quantity: 1,
-            price: loanedAmount,
-            total: loanedAmount,
-            buyerId: currentProfile.id,
-            sellerId: '',
-            financierId: selectedFinancier,
-            loanAmount: loanedAmount,
-          })
-        }
-        router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
-      } else {
-        setError('Insufficient balance')
-      }
-    } else if (transactionDetails.type === 'sell') {
-      updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount)
-      updateProfileBalance(counterparty.id, counterparty.balance - totalAmount)
-      addTransaction({
-        type: 'sell',
-        commodity: transactionDetails.commodity,
-        quantity: transactionDetails.quantity,
-        price: transactionDetails.price,
-        total: totalAmount,
-        buyerId: counterparty.id,
-        sellerId: currentProfile.id,
-        financierId: selectedFinancier || undefined,
-        loanAmount: loanedAmount,
-      })
-      if (loanedAmount > 0) {
-        addTransaction({
-          type: 'finance',
-          commodity: 'Loan',
-          quantity: 1,
-          price: loanedAmount,
-          total: loanedAmount,
-          buyerId: counterparty.id,
-          sellerId: '',
-          financierId: selectedFinancier,
-          loanAmount: loanedAmount,
-        })
-      }
-      router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
-    }
-  }
-
-  const financiers = profiles.filter(p => p.type === 'financier')
-
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-        <Button className="mt-4" onClick={() => router.push('/admin')}>Back to Admin</Button>
-      </div>
     )
   }
 
-  if (!counterparty) {
-    return <div>Loading...</div>
+  const addProfile = (profile: Omit<Profile, 'id'>) => {
+    const newProfile: Profile = {
+      ...profile,
+      id: Date.now().toString(),
+      totalFunds: profile.type === 'financier' ? profile.balance : undefined,
+      availableFunds: profile.type === 'financier' ? profile.balance : undefined,
+      loans: profile.type === 'trader' ? {} : undefined,
+    }
+    setProfiles(prevProfiles => [...prevProfiles, newProfile])
+  }
+
+  const getProfileById = (id: string) => {
+    return profiles.find(profile => profile.id === id)
+  }
+
+  const updateFinancierFunds = (traderId: string, financierId: string, loanAmount: number) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile => {
+        if (profile.id === traderId && profile.type === 'trader') {
+          const newLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) + loanAmount }
+          return { ...profile, loans: newLoans }
+        }
+        if (profile.id === financierId && profile.type === 'financier') {
+          const updatedAvailableFunds = (profile.availableFunds || 0) - loanAmount
+          return { ...profile, availableFunds: updatedAvailableFunds }
+        }
+        return profile
+      })
+    )
+  }
+
+  const updateProfileInterests = (id: string, newInterests: Interest) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile =>
+        profile.id === id
+          ? { ...profile, interests: newInterests }
+          : profile
+      )
+    );
+    if (currentProfile && currentProfile.id === id) {
+      setCurrentProfile(prevProfile => ({
+        ...prevProfile!,
+        interests: newInterests
+      }));
+    }
+  };
+  
+
+  const repayLoan = (traderId: string, financierId: string, amount: number) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile => {
+        if (profile.id === traderId && profile.type === 'trader') {
+          const updatedLoans = {
+            ...profile.loans,
+            [financierId]: (profile.loans?.[financierId] || 0) - amount
+          }
+          return { ...profile, balance: profile.balance - amount, loans: updatedLoans }
+        }
+        if (profile.id === financierId && profile.type === 'financier') {
+          const updatedBalance = profile.balance + amount
+          const updatedAvailableFunds = (profile.availableFunds || 0) + amount
+          return { ...profile, balance: updatedBalance, availableFunds: updatedAvailableFunds }
+        }
+        return profile
+      })
+    )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Transaction with {counterparty.name}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center space-x-4">
-          <Avatar>
-            <AvatarFallback>{counterparty.name.charAt(0)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="font-medium">{counterparty.name}</p>
-            <p className="text-sm text-muted-foreground">Trader ID: {counterparty.id}</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Transaction Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p>Type: {transactionDetails.type.toUpperCase()}</p>
-          <p>Commodity: {transactionDetails.commodity}</p>
-          <p>Price: ${transactionDetails.price}</p>
-          <p>Quantity: {transactionDetails.quantity}</p>
-          <p>Total Amount: ${transactionDetails.price * transactionDetails.quantity}</p>
-          <p>Your Balance: ${currentProfile?.balance.toFixed(2)}</p>
-        </CardContent>
-      </Card>
-
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Financier Loan</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Select onValueChange={setSelectedFinancier} value={selectedFinancier}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a financier" />
-            </SelectTrigger>
-            <SelectContent>
-              {financiers.map((financier) => (
-                <SelectItem key={financier.id} value={financier.id}>
-                  {financier.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedFinancier && (
-            <div className="mt-4">
-              <p className="mb-2 text-sm text-muted-foreground">
-                Financier Balance: ${getProfileById(selectedFinancier)?.balance.toFixed(2)}
-              </p>
-              <Input
-                type="number"
-                placeholder="Loan Amount"
-                value={loanAmount}
-                onChange={(e) => setLoanAmount(e.target.value)}
-                className="mt-2"
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Upload Contract</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center space-x-4">
-            <Input type="file" onChange={handleFileChange} accept=".txt,.pdf,.doc,.docx" />
-            <Button onClick={analyzeContract} disabled={!file || isAnalyzing}>
-              <Upload className="mr-2 h-4 w-4" /> {isAnalyzing ? 'Analyzing...' : 'Analyze Contract'}
-            </Button>
-          </div>
-          {analysisResult && (
-            <Alert className="mt-4" variant={analysisResult.startsWith('Error') ? 'destructive' : 'default'}>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{analysisResult.startsWith('Error') ? 'Error' : 'Analysis Result'}</AlertTitle>
-              <AlertDescription>{analysisResult}</AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
-
-      <Button className="w-full" onClick={handleTransaction}>Proceed with Transaction</Button>
-    </div>
+    <ProfileContext.Provider 
+      value={{ 
+        profiles, 
+        currentProfile, 
+        setCurrentProfile, 
+        updateProfileBalance, 
+        addProfile,
+        getProfileById,
+        updateFinancierFunds,
+        updateProfileInterests,
+        repayLoan
+      }}
+    >
+      {children}
+    </ProfileContext.Provider>
   )
 }

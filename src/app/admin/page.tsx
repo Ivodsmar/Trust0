@@ -21,7 +21,6 @@ export default function Component() {
     id: '',
     amount: 0,
   })
-  const [selectedProfile, setSelectedProfile] = useState<typeof profiles[0] | null>(null)
 
   const handleAddProfile = (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,11 +39,6 @@ export default function Component() {
       updateProfileBalance(updateBalance.id, updateBalance.amount)
       setUpdateBalance({ id: '', amount: 0 })
     }
-  }
-
-  const handleProfileSelect = (profile: typeof profiles[0]) => {
-    setSelectedProfile(profile)
-    setCurrentProfile(profile)
   }
 
   return (
@@ -106,14 +100,16 @@ export default function Component() {
               <Label htmlFor="profileId">Profile</Label>
               <Select
                 value={updateBalance.id}
-                onValueChange={(value) => setUpdateBalance({ ...updateBalance, id: value })}
+                onValueChange={(value: string) => setUpdateBalance({ ...updateBalance, id: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select profile" />
                 </SelectTrigger>
                 <SelectContent>
                   {profiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -132,7 +128,7 @@ export default function Component() {
           </form>
         </CardContent>
       </Card>
-
+        
       <Card>
         <CardHeader>
           <CardTitle>All Profiles</CardTitle>
@@ -165,14 +161,14 @@ export default function Component() {
                       ? `$${profile.totalFunds.toFixed(2)}`
                       : 'N/A'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="space-x-2">
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="outline" onClick={() => handleProfileSelect(profile)}>View Details</Button>
+                        <Button variant="outline">View Details</Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>{profile.name}'s Profile</DialogTitle>
+                          <DialogTitle>{profile.name}&#39;s Profile</DialogTitle>
                         </DialogHeader>
                         <div className="mt-4">
                           <p><strong>ID:</strong> {profile.id}</p>
@@ -199,6 +195,7 @@ export default function Component() {
                         </div>
                       </DialogContent>
                     </Dialog>
+                    <Button variant="outline" onClick={() => setCurrentProfile(profile)}>Switch to Profile</Button>
                   </TableCell>
                 </TableRow>
               ))}

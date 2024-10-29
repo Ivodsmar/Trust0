@@ -18,6 +18,7 @@ export type Profile = {
   interests: Interest
   totalFunds?: number
   availableFunds?: number
+  loans?: { [financierId: string]: number } // Loans owed to each financier
 }
 
 type ProfileContextType = {
@@ -27,7 +28,7 @@ type ProfileContextType = {
   updateProfileBalance: (id: string, newBalance: number) => void
   addProfile: (profile: Omit<Profile, 'id'>) => void
   getProfileById: (id: string) => Profile | undefined
-  updateFinancierFunds: (id: string, loanAmount: number) => void
+  updateFinancierFunds: (traderId: string, financierId: string, loanAmount: number) => void
   updateProfileInterests: (id: string, newInterests: Interest) => void
   repayLoan: (traderId: string, financierId: string, amount: number) => void
 }
@@ -48,14 +49,16 @@ const initialProfiles: Profile[] = [
     name: 'Trader A', 
     balance: 100000, 
     type: 'trader', 
-    interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] }
+    interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] },
+    loans: {} // Start with no loans
   },
   { 
     id: '2', 
     name: 'Trader B', 
     balance: 150000, 
     type: 'trader', 
-    interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] }
+    interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] },
+    loans: {} // Start with no loans
   },
   { 
     id: '3', 
@@ -119,6 +122,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: Date.now().toString(),
       totalFunds: profile.type === 'financier' ? profile.balance : undefined,
       availableFunds: profile.type === 'financier' ? profile.balance : undefined,
+      loans: profile.type === 'trader' ? {} : undefined,
     }
     setProfiles(prevProfiles => [...prevProfiles, newProfile])
   }
@@ -127,42 +131,40 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return profiles.find(profile => profile.id === id)
   }
 
-  const updateFinancierFunds = (id: string, loanAmount: number) => {
+  const updateFinancierFunds = (traderId: string, financierId: string, loanAmount: number) => {
     setProfiles(prevProfiles =>
       prevProfiles.map(profile => {
-        if (profile.id === id && profile.type === 'financier') {
-          const newAvailableFunds = (profile.availableFunds || profile.balance) - loanAmount
-          const newTotalFunds = (profile.totalFunds || profile.balance)
-          return {
-            ...profile,
-            balance: newAvailableFunds,
-            availableFunds: newAvailableFunds,
-            totalFunds: newTotalFunds
-          }
+        if (profile.id === traderId && profile.type === 'trader') {
+          const newLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) + loanAmount }
+          return { ...profile, loans: newLoans }
+        }
+        if (profile.id === financierId && profile.type === 'financier') {
+          return { ...profile, availableFunds: (profile.availableFunds || 0) - loanAmount }
         }
         return profile
       })
     )
-    if (currentProfile && currentProfile.id === id && currentProfile.type === 'financier') {
-      setCurrentProfile(prevProfile => {
-        const newAvailableFunds = (prevProfile!.availableFunds || prevProfile!.balance) - loanAmount
-        const newTotalFunds = (prevProfile!.totalFunds || prevProfile!.balance)
-        return {
-          ...prevProfile!,
-          balance: newAvailableFunds,
-          availableFunds: newAvailableFunds,
-          totalFunds: newTotalFunds
+  }
+
+  const repayLoan = (traderId: string, financierId: string, amount: number) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile => {
+        if (profile.id === traderId && profile.type === 'trader') {
+          const newLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) - amount }
+          return { ...profile, balance: profile.balance - amount, loans: newLoans }
         }
+        if (profile.id === financierId && profile.type === 'financier') {
+          return { ...profile, balance: profile.balance + amount, availableFunds: (profile.availableFunds || 0) + amount }
+        }
+        return profile
       })
-    }
+    )
   }
 
   const updateProfileInterests = (id: string, newInterests: Interest) => {
     setProfiles(prevProfiles =>
       prevProfiles.map(profile =>
-        profile.id === id
-          ? { ...profile, interests: newInterests }
-          : profile
+        profile.id === id ? { ...profile, interests: newInterests } : profile
       )
     )
     if (currentProfile && currentProfile.id === id) {
@@ -170,43 +172,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prevProfile!,
         interests: newInterests
       }))
-    }
-  }
-
-  const repayLoan = (traderId: string, financierId: string, amount: number) => {
-    setProfiles(prevProfiles =>
-      prevProfiles.map(profile => {
-        if (profile.id === traderId) {
-          return { ...profile, balance: profile.balance - amount }
-        }
-        if (profile.id === financierId && profile.type === 'financier') {
-          const newAvailableFunds = (profile.availableFunds || profile.balance) + amount
-          return {
-            ...profile,
-            balance: profile.balance + amount,
-            availableFunds: newAvailableFunds,
-            totalFunds: (profile.totalFunds || profile.balance)
-          }
-        }
-        return profile
-      })
-    )
-    if (currentProfile && (currentProfile.id === traderId || currentProfile.id === financierId)) {
-      setCurrentProfile(prevProfile => {
-        if (prevProfile!.id === traderId) {
-          return { ...prevProfile!, balance: prevProfile!.balance - amount }
-        }
-        if (prevProfile!.id === financierId && prevProfile!.type === 'financier') {
-          const newAvailableFunds = (prevProfile!.availableFunds || prevProfile!.balance) + amount
-          return {
-            ...prevProfile!,
-            balance: prevProfile!.balance + amount,
-            availableFunds: newAvailableFunds,
-            totalFunds: (prevProfile!.totalFunds || prevProfile!.balance)
-          }
-        }
-        return prevProfile!
-      })
     }
   }
 
