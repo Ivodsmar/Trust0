@@ -1,102 +1,139 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useProfiles } from '@/contexts/ProfileContext'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
-// Mock data for users
-const mockUsers = [
-  { id: '1', name: 'John Doe', email: 'john@example.com' },
-  { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
-  { id: '3', name: 'Bob Johnson', email: 'bob@example.com' },
-]
+export default function Component() {
+  const { profiles, addProfile, updateProfileBalance, setCurrentProfile } = useProfiles()
+  const [newProfile, setNewProfile] = useState({
+    name: '',
+    balance: 0,
+    type: 'trader' as 'trader' | 'financier',
+  })
+  const [updateBalance, setUpdateBalance] = useState({
+    id: '',
+    amount: 0,
+  })
+  const [selectedProfile, setSelectedProfile] = useState<typeof profiles[0] | null>(null)
 
-export default function AdminPage() {
-  const { profiles, currentProfile, setCurrentProfile, updateProfileBalance } = useProfiles()
-  const [newBalance, setNewBalance] = useState('')
-  const [users, setUsers] = useState(mockUsers)
-  const [newUser, setNewUser] = useState({ name: '', email: '' })
+  const handleAddProfile = (e: React.FormEvent) => {
+    e.preventDefault()
+    addProfile({
+      ...newProfile,
+      interests: { buy: [], sell: [], finance: [] },
+      email: '',
+      bio: '',
+    })
+    setNewProfile({ name: '', balance: 0, type: 'trader' })
+  }
 
-  const handleProfileChange = (profileId: string) => {
-    const selectedProfile = profiles.find(p => p.id === profileId)
-    if (selectedProfile) {
-      setCurrentProfile(selectedProfile)
+  const handleUpdateBalance = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (updateBalance.id && updateBalance.amount) {
+      updateProfileBalance(updateBalance.id, updateBalance.amount)
+      setUpdateBalance({ id: '', amount: 0 })
     }
   }
 
-  const handleBalanceUpdate = () => {
-    if (currentProfile && newBalance) {
-      const updatedBalance = parseFloat(newBalance)
-      if (!isNaN(updatedBalance)) {
-        updateProfileBalance(currentProfile.id, updatedBalance)
-        setNewBalance('')
-      } else {
-        alert('Please enter a valid number for the balance.')
-      }
-    }
-  }
-
-  const handleNewUserChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewUser({ ...newUser, [e.target.name]: e.target.value })
-  }
-
-  const handleAddUser = () => {
-    if (newUser.name && newUser.email) {
-      setUsers([...users, { id: (users.length + 1).toString(), ...newUser }])
-      setNewUser({ name: '', email: '' })
-    } else {
-      alert('Please enter both name and email for the new user.')
-    }
+  const handleProfileSelect = (profile: typeof profiles[0]) => {
+    setSelectedProfile(profile)
+    setCurrentProfile(profile)
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
-
+      <h1 className="text-2xl font-bold mb-4">Admin Dashboard</h1>
+      
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Profile Management</CardTitle>
+          <CardTitle>Add New Profile</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center space-x-4 mb-4">
-            <Select onValueChange={handleProfileChange} value={currentProfile?.id || ''}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select profile" />
-              </SelectTrigger>
-              <SelectContent>
-                {profiles.map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {currentProfile && (
+          <form onSubmit={handleAddProfile} className="space-y-4">
             <div>
-              <p>Current Profile: {currentProfile.name}</p>
-              <p>Type: {currentProfile.type}</p>
-              <p>Balance: ${currentProfile.balance.toFixed(2)}</p>
-              <div className="mt-4 flex items-center space-x-2">
-                <Input
-                  type="number"
-                  placeholder="New Balance"
-                  value={newBalance}
-                  onChange={(e) => setNewBalance(e.target.value)}
-                />
-                <Button onClick={handleBalanceUpdate}>Update Balance</Button>
-              </div>
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={newProfile.name}
+                onChange={(e) => setNewProfile({ ...newProfile, name: e.target.value })}
+                required
+              />
             </div>
-          )}
+            <div>
+              <Label htmlFor="balance">Initial Balance</Label>
+              <Input
+                id="balance"
+                type="number"
+                value={newProfile.balance}
+                onChange={(e) => setNewProfile({ ...newProfile, balance: Number(e.target.value) })}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="type">Type</Label>
+              <Select
+                value={newProfile.type}
+                onValueChange={(value: 'trader' | 'financier') => setNewProfile({ ...newProfile, type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="trader">Trader</SelectItem>
+                  <SelectItem value="financier">Financier</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit">Add Profile</Button>
+          </form>
         </CardContent>
       </Card>
 
       <Card className="mb-8">
+        <CardHeader>
+          <CardTitle>Update Balance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleUpdateBalance} className="space-y-4">
+            <div>
+              <Label htmlFor="profileId">Profile</Label>
+              <Select
+                value={updateBalance.id}
+                onValueChange={(value) => setUpdateBalance({ ...updateBalance, id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select profile" />
+                </SelectTrigger>
+                <SelectContent>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="amount">New Balance</Label>
+              <Input
+                id="amount"
+                type="number"
+                value={updateBalance.amount}
+                onChange={(e) => setUpdateBalance({ ...updateBalance, amount: Number(e.target.value) })}
+                required
+              />
+            </div>
+            <Button type="submit">Update Balance</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <CardTitle>All Profiles</CardTitle>
         </CardHeader>
@@ -107,6 +144,9 @@ export default function AdminPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Balance</TableHead>
+                <TableHead>Available Funds</TableHead>
+                <TableHead>Total Funds</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -115,70 +155,55 @@ export default function AdminPage() {
                   <TableCell>{profile.name}</TableCell>
                   <TableCell>{profile.type}</TableCell>
                   <TableCell>${profile.balance.toFixed(2)}</TableCell>
+                  <TableCell>
+                    {profile.type === 'financier' && profile.availableFunds
+                      ? `$${profile.availableFunds.toFixed(2)}`
+                      : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    {profile.type === 'financier' && profile.totalFunds
+                      ? `$${profile.totalFunds.toFixed(2)}`
+                      : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" onClick={() => handleProfileSelect(profile)}>View Details</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>{profile.name}'s Profile</DialogTitle>
+                        </DialogHeader>
+                        <div className="mt-4">
+                          <p><strong>ID:</strong> {profile.id}</p>
+                          <p><strong>Type:</strong> {profile.type}</p>
+                          <p><strong>Balance:</strong> ${profile.balance.toFixed(2)}</p>
+                          {profile.type === 'financier' && (
+                            <>
+                              <p><strong>Available Funds:</strong> ${profile.availableFunds?.toFixed(2) || 'N/A'}</p>
+                              <p><strong>Total Funds:</strong> ${profile.totalFunds?.toFixed(2) || 'N/A'}</p>
+                            </>
+                          )}
+                          <p><strong>Email:</strong> {profile.email || 'N/A'}</p>
+                          <p><strong>Bio:</strong> {profile.bio || 'N/A'}</p>
+                          <div>
+                            <strong>Interests:</strong>
+                            <ul>
+                              {profile.interests && Object.entries(profile.interests).map(([type, interests]) => (
+                                <li key={type}>
+                                  {type}: {Array.isArray(interests) && interests.length > 0 ? interests.join(', ') : 'None'}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Manage Users</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>{user.id}</TableCell>
-                  <TableCell>{user.name}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="mt-4 flex items-end space-x-4">
-            <div className="flex-grow">
-              <Label htmlFor="newUserName">Name</Label>
-              <Input
-                id="newUserName"
-                name="name"
-                value={newUser.name}
-                onChange={handleNewUserChange}
-                placeholder="Enter name"
-              />
-            </div>
-            <div className="flex-grow">
-              <Label htmlFor="newUserEmail">Email</Label>
-              <Input
-                id="newUserEmail"
-                name="email"
-                value={newUser.email}
-                onChange={handleNewUserChange}
-                placeholder="Enter email"
-              />
-            </div>
-            <Button onClick={handleAddUser}>Add User</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>System Statistics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p>Total Users: {users.length}</p>
-          <p>Total Profiles: {profiles.length}</p>
-          <p>Total Balance (all profiles): ${profiles.reduce((sum, profile) => sum + profile.balance, 0).toFixed(2)}</p>
         </CardContent>
       </Card>
     </div>

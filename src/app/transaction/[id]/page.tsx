@@ -16,9 +16,10 @@ export default function TransactionPage() {
   const { id } = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { profiles, currentProfile, updateProfileBalance } = useProfiles()
+  const { profiles, currentProfile, updateProfileBalance, getProfileById, updateFinancierFunds } = useProfiles()
   const { addTransaction } = useTransactions()
   const [selectedFinancier, setSelectedFinancier] = useState('')
+  const [loanAmount, setLoanAmount] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -30,6 +31,7 @@ export default function TransactionPage() {
     traderName: '',
   })
   const [counterparty, setCounterparty] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setTransactionDetails({
@@ -40,12 +42,18 @@ export default function TransactionPage() {
       traderName: searchParams.get('traderName') || '',
     })
 
-    // Find the counterparty based on the trader name
-    const foundCounterparty = profiles.find(p => p.name === searchParams.get('traderName'))
-    if (foundCounterparty) {
-      setCounterparty(foundCounterparty)
+    const traderName = searchParams.get('traderName')
+    if (traderName) {
+      const foundCounterparty = profiles.find(p => p.name === traderName)
+      if (foundCounterparty) {
+        setCounterparty(foundCounterparty)
+      } else {
+        setError(`Counterparty not found for name: ${traderName}`)
+        console.error(`Counterparty not found for name: ${traderName}`)
+      }
     } else {
-      console.error('Counterparty not found for name:', searchParams.get('traderName'))
+      setError('Trader name not provided in search parameters')
+      console.error('Trader name not provided in search parameters')
     }
   }, [searchParams, profiles])
 
@@ -93,50 +101,102 @@ export default function TransactionPage() {
 
   const handleTransaction = () => {
     if (!currentProfile || !counterparty) {
-      alert('Current profile or counterparty not found')
+      setError('Current profile or counterparty not found')
       return
     }
 
     const totalAmount = transactionDetails.price * transactionDetails.quantity
+    let loanedAmount = 0
+
+    if (selectedFinancier && loanAmount) {
+      loanedAmount = parseFloat(loanAmount)
+      const financier = getProfileById(selectedFinancier)
+      if (financier && financier.balance >= loanedAmount) {
+        updateFinancierFunds(financier.id, -loanedAmount)
+        updateProfileBalance(currentProfile.id, currentProfile.balance + loanedAmount)
+      } else {
+        setError('Insufficient financier balance')
+        return
+      }
+    }
 
     if (transactionDetails.type === 'buy') {
       if (currentProfile.balance >= totalAmount) {
         updateProfileBalance(currentProfile.id, currentProfile.balance - totalAmount)
         updateProfileBalance(counterparty.id, counterparty.balance + totalAmount)
         addTransaction({
-          id: Date.now().toString(),
           type: 'buy',
           commodity: transactionDetails.commodity,
           quantity: transactionDetails.quantity,
           price: transactionDetails.price,
           total: totalAmount,
-          date: new Date().toISOString().split('T')[0],
           buyerId: currentProfile.id,
           sellerId: counterparty.id,
+          financierId: selectedFinancier || undefined,
+          loanAmount: loanedAmount,
         })
+        if (loanedAmount > 0) {
+          addTransaction({
+            type: 'finance',
+            commodity: 'Loan',
+            quantity: 1,
+            price: loanedAmount,
+            total: loanedAmount,
+            buyerId: currentProfile.id,
+            sellerId: '',
+            financierId: selectedFinancier,
+            loanAmount: loanedAmount,
+          })
+        }
         router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
       } else {
-        alert('Insufficient balance')
+        setError('Insufficient balance')
       }
     } else if (transactionDetails.type === 'sell') {
       updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount)
       updateProfileBalance(counterparty.id, counterparty.balance - totalAmount)
       addTransaction({
-        id: Date.now().toString(),
         type: 'sell',
         commodity: transactionDetails.commodity,
         quantity: transactionDetails.quantity,
         price: transactionDetails.price,
         total: totalAmount,
-        date: new Date().toISOString().split('T')[0],
         buyerId: counterparty.id,
         sellerId: currentProfile.id,
+        financierId: selectedFinancier || undefined,
+        loanAmount: loanedAmount,
       })
+      if (loanedAmount > 0) {
+        addTransaction({
+          type: 'finance',
+          commodity: 'Loan',
+          quantity: 1,
+          price: loanedAmount,
+          total: loanedAmount,
+          buyerId: counterparty.id,
+          sellerId: '',
+          financierId: selectedFinancier,
+          loanAmount: loanedAmount,
+        })
+      }
       router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
     }
   }
 
   const financiers = profiles.filter(p => p.type === 'financier')
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+        <Button className="mt-4" onClick={() => router.push('/admin')}>Back to Admin</Button>
+      </div>
+    )
+  }
 
   if (!counterparty) {
     return <div>Loading...</div>
@@ -175,7 +235,7 @@ export default function TransactionPage() {
 
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Choose a Financier</CardTitle>
+          <CardTitle>Financier Loan</CardTitle>
         </CardHeader>
         <CardContent>
           <Select onValueChange={setSelectedFinancier} value={selectedFinancier}>
@@ -191,9 +251,18 @@ export default function TransactionPage() {
             </SelectContent>
           </Select>
           {selectedFinancier && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Financier Balance: ${profiles.find(f => f.id === selectedFinancier)?.balance.toFixed(2)}
-            </p>
+            <div className="mt-4">
+              <p className="mb-2 text-sm text-muted-foreground">
+                Financier Balance: ${getProfileById(selectedFinancier)?.balance.toFixed(2)}
+              </p>
+              <Input
+                type="number"
+                placeholder="Loan Amount"
+                value={loanAmount}
+                onChange={(e) => setLoanAmount(e.target.value)}
+                className="mt-2"
+              />
+            </div>
           )}
         </CardContent>
       </Card>

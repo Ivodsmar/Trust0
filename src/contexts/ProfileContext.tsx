@@ -2,18 +2,34 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
 
+export type Interest = {
+  buy: string[]
+  sell: string[]
+  finance: string[]
+}
+
 export type Profile = {
   id: string
   name: string
+  email?: string
+  bio?: string
   balance: number
   type: 'trader' | 'financier'
+  interests: Interest
+  totalFunds?: number
+  availableFunds?: number
 }
 
 type ProfileContextType = {
   profiles: Profile[]
   currentProfile: Profile | null
-  setCurrentProfile: (profile: Profile) => void
+  setCurrentProfile: (profile: Profile | null) => void
   updateProfileBalance: (id: string, newBalance: number) => void
+  addProfile: (profile: Omit<Profile, 'id'>) => void
+  getProfileById: (id: string) => Profile | undefined
+  updateFinancierFunds: (id: string, loanAmount: number) => void
+  updateProfileInterests: (id: string, newInterests: Interest) => void
+  repayLoan: (traderId: string, financierId: string, amount: number) => void
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
@@ -27,43 +43,187 @@ export const useProfiles = () => {
 }
 
 const initialProfiles: Profile[] = [
-  { id: '1', name: 'Trader A', balance: 100000, type: 'trader' },
-  { id: '2', name: 'Trader B', balance: 150000, type: 'trader' },
-  { id: '3', name: 'Financier X', balance: 500000, type: 'financier' },
+  { 
+    id: '1', 
+    name: 'Trader A', 
+    balance: 100000, 
+    type: 'trader', 
+    interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] }
+  },
+  { 
+    id: '2', 
+    name: 'Trader B', 
+    balance: 150000, 
+    type: 'trader', 
+    interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] }
+  },
+  { 
+    id: '3', 
+    name: 'Financier X', 
+    balance: 500000, 
+    type: 'financier', 
+    totalFunds: 500000, 
+    availableFunds: 500000, 
+    interests: { buy: [], sell: [], finance: ['Invoice Financing', 'Trade Finance'] }
+  },
 ]
 
 export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profiles, setProfiles] = useState<Profile[]>(() => {
-    const storedProfiles = localStorage.getItem('profiles')
-    return storedProfiles ? JSON.parse(storedProfiles) : initialProfiles
+    if (typeof window !== 'undefined') {
+      const storedProfiles = localStorage.getItem('profiles')
+      return storedProfiles ? JSON.parse(storedProfiles) : initialProfiles
+    }
+    return initialProfiles
   })
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null)
 
   useEffect(() => {
-    // Set the first profile as the current profile when the app loads
     if (profiles.length > 0 && !currentProfile) {
       setCurrentProfile(profiles[0])
     }
   }, [profiles, currentProfile])
 
   useEffect(() => {
-    // Save profiles to localStorage whenever they change
-    localStorage.setItem('profiles', JSON.stringify(profiles))
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('profiles', JSON.stringify(profiles))
+    }
   }, [profiles])
 
   const updateProfileBalance = (id: string, newBalance: number) => {
     setProfiles(prevProfiles =>
       prevProfiles.map(profile =>
-        profile.id === id ? { ...profile, balance: newBalance } : profile
+        profile.id === id
+          ? {
+              ...profile,
+              balance: newBalance,
+              availableFunds: profile.type === 'financier' ? newBalance : undefined,
+              totalFunds: profile.type === 'financier' ? (profile.totalFunds || newBalance) : undefined
+            }
+          : profile
       )
     )
     if (currentProfile && currentProfile.id === id) {
-      setCurrentProfile({ ...currentProfile, balance: newBalance })
+      setCurrentProfile(prevProfile => ({
+        ...prevProfile!,
+        balance: newBalance,
+        availableFunds: prevProfile!.type === 'financier' ? newBalance : undefined,
+        totalFunds: prevProfile!.type === 'financier' ? (prevProfile!.totalFunds || newBalance) : undefined
+      }))
+    }
+  }
+
+  const addProfile = (profile: Omit<Profile, 'id'>) => {
+    const newProfile: Profile = {
+      ...profile,
+      id: Date.now().toString(),
+      totalFunds: profile.type === 'financier' ? profile.balance : undefined,
+      availableFunds: profile.type === 'financier' ? profile.balance : undefined,
+    }
+    setProfiles(prevProfiles => [...prevProfiles, newProfile])
+  }
+
+  const getProfileById = (id: string) => {
+    return profiles.find(profile => profile.id === id)
+  }
+
+  const updateFinancierFunds = (id: string, loanAmount: number) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile => {
+        if (profile.id === id && profile.type === 'financier') {
+          const newAvailableFunds = (profile.availableFunds || profile.balance) - loanAmount
+          const newTotalFunds = (profile.totalFunds || profile.balance)
+          return {
+            ...profile,
+            balance: newAvailableFunds,
+            availableFunds: newAvailableFunds,
+            totalFunds: newTotalFunds
+          }
+        }
+        return profile
+      })
+    )
+    if (currentProfile && currentProfile.id === id && currentProfile.type === 'financier') {
+      setCurrentProfile(prevProfile => {
+        const newAvailableFunds = (prevProfile!.availableFunds || prevProfile!.balance) - loanAmount
+        const newTotalFunds = (prevProfile!.totalFunds || prevProfile!.balance)
+        return {
+          ...prevProfile!,
+          balance: newAvailableFunds,
+          availableFunds: newAvailableFunds,
+          totalFunds: newTotalFunds
+        }
+      })
+    }
+  }
+
+  const updateProfileInterests = (id: string, newInterests: Interest) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile =>
+        profile.id === id
+          ? { ...profile, interests: newInterests }
+          : profile
+      )
+    )
+    if (currentProfile && currentProfile.id === id) {
+      setCurrentProfile(prevProfile => ({
+        ...prevProfile!,
+        interests: newInterests
+      }))
+    }
+  }
+
+  const repayLoan = (traderId: string, financierId: string, amount: number) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile => {
+        if (profile.id === traderId) {
+          return { ...profile, balance: profile.balance - amount }
+        }
+        if (profile.id === financierId && profile.type === 'financier') {
+          const newAvailableFunds = (profile.availableFunds || profile.balance) + amount
+          return {
+            ...profile,
+            balance: profile.balance + amount,
+            availableFunds: newAvailableFunds,
+            totalFunds: (profile.totalFunds || profile.balance)
+          }
+        }
+        return profile
+      })
+    )
+    if (currentProfile && (currentProfile.id === traderId || currentProfile.id === financierId)) {
+      setCurrentProfile(prevProfile => {
+        if (prevProfile!.id === traderId) {
+          return { ...prevProfile!, balance: prevProfile!.balance - amount }
+        }
+        if (prevProfile!.id === financierId && prevProfile!.type === 'financier') {
+          const newAvailableFunds = (prevProfile!.availableFunds || prevProfile!.balance) + amount
+          return {
+            ...prevProfile!,
+            balance: prevProfile!.balance + amount,
+            availableFunds: newAvailableFunds,
+            totalFunds: (prevProfile!.totalFunds || prevProfile!.balance)
+          }
+        }
+        return prevProfile!
+      })
     }
   }
 
   return (
-    <ProfileContext.Provider value={{ profiles, currentProfile, setCurrentProfile, updateProfileBalance }}>
+    <ProfileContext.Provider 
+      value={{ 
+        profiles, 
+        currentProfile, 
+        setCurrentProfile, 
+        updateProfileBalance, 
+        addProfile,
+        getProfileById,
+        updateFinancierFunds,
+        updateProfileInterests,
+        repayLoan
+      }}
+    >
       {children}
     </ProfileContext.Provider>
   )

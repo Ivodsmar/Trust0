@@ -2,9 +2,11 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
 
-export type Transaction = {
+export type TransactionType = 'buy' | 'sell' | 'finance' | 'repay'
+
+export interface Transaction {
   id: string
-  type: 'buy' | 'sell'
+  type: TransactionType
   commodity: string
   quantity: number
   price: number
@@ -12,11 +14,17 @@ export type Transaction = {
   date: string
   buyerId: string
   sellerId: string
+  financierId?: string
+  loanAmount?: number
 }
 
-type TransactionContextType = {
+interface TransactionContextType {
   transactions: Transaction[]
-  addTransaction: (transaction: Transaction) => void
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => void
+  getTransactionsByProfile: (profileId: string) => Transaction[]
+  getTotalTransactionVolume: () => number
+  getTransactionById: (id: string) => Transaction | undefined
+  getTotalLoanedAmount: (financierId: string) => number
 }
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined)
@@ -30,25 +38,66 @@ export const useTransactions = () => {
 }
 
 export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    if (typeof window !== 'undefined') {
+      const storedTransactions = localStorage.getItem('transactions')
+      return storedTransactions ? JSON.parse(storedTransactions) : []
+    }
+    return []
+  })
 
   useEffect(() => {
-    const storedTransactions = localStorage.getItem('transactions')
-    if (storedTransactions) {
-      setTransactions(JSON.parse(storedTransactions))
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('transactions', JSON.stringify(transactions))
     }
-  }, [])
+  }, [transactions])
 
-  const addTransaction = (transaction: Transaction) => {
-    setTransactions(prevTransactions => {
-      const newTransactions = [...prevTransactions, transaction]
-      localStorage.setItem('transactions', JSON.stringify(newTransactions))
-      return newTransactions
-    })
+  const addTransaction = (transaction: Omit<Transaction, 'id' | 'date'>) => {
+    const newTransaction: Transaction = {
+      ...transaction,
+      id: Date.now().toString(),
+      date: new Date().toISOString().split('T')[0],
+    }
+    setTransactions(prevTransactions => [...prevTransactions, newTransaction])
+  }
+
+  const getTransactionsByProfile = (profileId: string) => {
+    return transactions.filter(
+      transaction => 
+        transaction.buyerId === profileId || 
+        transaction.sellerId === profileId || 
+        transaction.financierId === profileId
+    )
+  }
+
+  const getTotalTransactionVolume = () => {
+    return transactions.reduce((sum, transaction) => sum + transaction.total, 0)
+  }
+
+  const getTransactionById = (id: string) => {
+    return transactions.find(transaction => transaction.id === id)
+  }
+
+  const getTotalLoanedAmount = (financierId: string) => {
+    return transactions
+      .filter(t => t.financierId === financierId)
+      .reduce((sum, t) => {
+        if (t.type === 'repay') {
+          return sum - (t.loanAmount || 0)
+        }
+        return sum + (t.loanAmount || 0)
+      }, 0)
   }
 
   return (
-    <TransactionContext.Provider value={{ transactions, addTransaction }}>
+    <TransactionContext.Provider value={{ 
+      transactions, 
+      addTransaction, 
+      getTransactionsByProfile,
+      getTotalTransactionVolume,
+      getTransactionById,
+      getTotalLoanedAmount
+    }}>
       {children}
     </TransactionContext.Provider>
   )

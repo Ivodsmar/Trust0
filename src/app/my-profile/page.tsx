@@ -1,6 +1,8 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useProfiles } from '@/contexts/ProfileContext'
+import { useTransactions, Transaction } from '@/contexts/TransactionContext'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,87 +10,181 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Star, Edit2, Save } from 'lucide-react'
+import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Star, Edit2, Save, AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-// Mock user data
-const initialUserData = {
-  id: '1',
-  name: 'John Doe',
-  avatar: '/placeholder.svg?height=100&width=100',
-  email: 'john.doe@example.com',
-  bio: 'Experienced commodities trader specializing in oil and precious metals.',
-  interests: {
-    buy: ['Oil', 'Natural Gas', 'Gold'],
-    sell: ['Silver', 'Copper'],
-    finance: ['Invoice Financing', 'Trade Finance']
-  },
-  trustRank: 4.5,
-  transactionVolume: 1000000,
-}
+type InterestType = 'buy' | 'sell' | 'finance'
 
 export default function MyProfilePage() {
-  const [userData, setUserData] = useState(initialUserData)
+  const { currentProfile, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
+  const { getTransactionsByProfile, getTotalLoanedAmount, addTransaction } = useTransactions()
   const [isEditing, setIsEditing] = useState(false)
-  const [newInterest, setNewInterest] = useState({ type: 'buy', value: '' })
+  const [editedProfile, setEditedProfile] = useState(currentProfile)
+  const [newInterest, setNewInterest] = useState({ type: 'buy' as InterestType, value: '' })
+  const [repaymentAmount, setRepaymentAmount] = useState<{ [key: string]: number }>({})
+  const [error, setError] = useState<string | null>(null)
+  const [currentLoans, setCurrentLoans] = useState<{ [key: string]: number }>({})
+
+  useEffect(() => {
+    if (currentProfile) {
+      setEditedProfile(currentProfile)
+      updateLoans()
+    }
+  }, [currentProfile])
+
+  const updateLoans = () => {
+    if (currentProfile) {
+      const transactions = getTransactionsByProfile(currentProfile.id)
+      const loans = transactions.filter((t: Transaction) =>
+        (t.type === 'finance' && t.buyerId === currentProfile.id) ||
+        (t.type === 'repay' && t.financierId === currentProfile.id)
+      )
+
+      const newLoans = loans.reduce((acc: { [key: string]: number }, loan: Transaction) => {
+        if (loan.type === 'finance' && loan.financierId) {
+          acc[loan.financierId] = (acc[loan.financierId] || 0) + (loan.loanAmount || 0)
+        } else if (loan.type === 'repay' && loan.financierId) {
+          acc[loan.financierId] = (acc[loan.financierId] || 0) - (loan.loanAmount || 0)
+        }
+        return acc
+      }, {})
+
+      setCurrentLoans(newLoans)
+    }
+  }
+
+  if (!currentProfile || !editedProfile) {
+    return <div>Loading...</div>
+  }
+
+  const transactions = getTransactionsByProfile(currentProfile.id)
+  const totalLoanedAmount = getTotalLoanedAmount(currentProfile.id)
+  const transactionVolume = transactions.reduce((sum, t) => sum + t.total, 0)
+
+  // Filter out fully repaid loans
+  const outstandingLoans = Object.entries(currentLoans).filter(([_, amount]) => amount > 0)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setUserData(prev => ({ ...prev, [name]: value }))
+    setEditedProfile(prev => prev ? { ...prev, [name]: value } : null)
   }
 
   const handleInterestAdd = (e: React.FormEvent) => {
     e.preventDefault()
-    if (newInterest.value) {
-      setUserData(prev => ({
-        ...prev,
+    if (newInterest.value && editedProfile && editedProfile.interests) {
+      setEditedProfile(prev => ({
+        ...prev!,
         interests: {
-          ...prev.interests,
-          [newInterest.type]: [...prev.interests[newInterest.type as keyof typeof prev.interests], newInterest.value]
+          ...prev!.interests,
+          [newInterest.type]: [...(prev!.interests[newInterest.type] || []), newInterest.value]
         }
       }))
       setNewInterest({ type: 'buy', value: '' })
     }
   }
 
-  const handleInterestRemove = (type: string, interest: string) => {
-    setUserData(prev => ({
-      ...prev,
-      interests: {
-        ...prev.interests,
-        [type]: prev.interests[type as keyof typeof prev.interests].filter(i => i !== interest)
-      }
-    }))
+  const handleInterestRemove = (type: InterestType, interest: string) => {
+    if (editedProfile && editedProfile.interests) {
+      setEditedProfile(prev => ({
+        ...prev!,
+        interests: {
+          ...prev!.interests,
+          [type]: prev!.interests[type].filter(i => i !== interest)
+        }
+      }))
+    }
   }
 
   const handleSave = () => {
-    // Here you would typically send the updated userData to your backend
-    console.log('Saving user data:', userData)
-    setIsEditing(false)
+    if (editedProfile) {
+      console.log('Saving user data:', editedProfile)
+      updateProfileBalance(currentProfile.id, editedProfile.balance)
+      if (editedProfile.interests) {
+        updateProfileInterests(currentProfile.id, editedProfile.interests)
+      }
+      setIsEditing(false)
+    }
   }
+
+  const handleRepayment = (financierId: string) => {
+    const amount = repaymentAmount[financierId]
+    if (amount && amount > 0) {
+      if (amount > currentProfile.balance) {
+        setError("Insufficient balance for repayment")
+        return
+      }
+      if (amount > currentLoans[financierId]) {
+        setError("Repayment amount exceeds the outstanding loan")
+        return
+      }
+      repayLoan(currentProfile.id, financierId, amount)
+      addTransaction({
+        type: 'repay',
+        commodity: 'Loan Repayment',
+        quantity: 1,
+        price: amount,
+        total: amount,
+        buyerId: currentProfile.id,
+        sellerId: '',
+        financierId: financierId,
+        loanAmount: amount
+      })
+      // Update the current loans immediately
+      setCurrentLoans(prev => ({
+        ...prev,
+        [financierId]: prev[financierId] - amount
+      }))
+      setRepaymentAmount(prev => ({ ...prev, [financierId]: 0 }))
+      setError(null)
+      // Update the profile to reflect the new balance
+      setEditedProfile(prev => ({
+        ...prev!,
+        balance: prev!.balance - amount
+      }))
+    } else {
+      setError("Please enter a valid repayment amount")
+    }
+  }
+
+  const availableFunds = currentProfile.availableFunds || currentProfile.balance
+  const totalFunds = currentProfile.totalFunds || currentProfile.balance
+  const usedFundsPercentage = currentProfile.type === 'financier' ? ((totalLoanedAmount / totalFunds) * 100) : 0
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
       <Card className="mb-8">
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-4">
             <Avatar className="h-20 w-20">
-              <AvatarImage src={userData.avatar} alt={userData.name} />
-              <AvatarFallback>{userData.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src={`/placeholder.svg?height=100&width=100`} alt={currentProfile.name} />
+              <AvatarFallback>{currentProfile.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
               <CardTitle className="text-2xl">
                 {isEditing ? (
                   <Input
                     name="name"
-                    value={userData.name}
+                    value={editedProfile.name}
                     onChange={handleInputChange}
                     className="mt-1"
                   />
                 ) : (
-                  userData.name
+                  currentProfile.name
                 )}
               </CardTitle>
-              <p className="text-sm text-muted-foreground">User ID: {userData.id}</p>
+              <p className="text-sm text-muted-foreground">User ID: {currentProfile.id}</p>
+              <p className="text-sm text-muted-foreground">Type: {currentProfile.type}</p>
+              <p className="text-sm font-semibold">Balance: ${editedProfile.balance.toFixed(2)}</p>
             </div>
           </div>
           <Button variant="outline" onClick={() => isEditing ? handleSave() : setIsEditing(true)}>
@@ -112,7 +208,7 @@ export default function MyProfilePage() {
               <Input
                 id="email"
                 name="email"
-                value={userData.email}
+                value={editedProfile.email || ''}
                 onChange={handleInputChange}
                 disabled={!isEditing}
               />
@@ -122,7 +218,7 @@ export default function MyProfilePage() {
               <Textarea
                 id="bio"
                 name="bio"
-                value={userData.bio}
+                value={editedProfile.bio || ''}
                 onChange={handleInputChange}
                 disabled={!isEditing}
                 className="h-24"
@@ -132,23 +228,34 @@ export default function MyProfilePage() {
               <h3 className="text-lg font-semibold mb-2">Trust Rank</h3>
               <div className="flex items-center">
                 <Star className="text-yellow-400 mr-1" />
-                <span className="text-xl font-bold">{userData.trustRank.toFixed(1)}</span>
+                <span className="text-xl font-bold">4.5</span>
                 <span className="text-sm text-muted-foreground ml-2">
-                  (Based on {userData.transactionVolume.toLocaleString()} USD transaction volume)
+                  (Based on ${transactionVolume.toLocaleString()} USD transaction volume)
                 </span>
               </div>
             </div>
+            {currentProfile.type === 'financier' && (
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold mb-2">Financing Overview</h3>
+                <Progress value={usedFundsPercentage} className="w-full" />
+                <div className="flex justify-between mt-2">
+                  <span>Available: ${availableFunds.toFixed(2)}</span>
+                  <span>In Use: ${totalLoanedAmount.toFixed(2)}</span>
+                  <span>Total: ${totalFunds.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
             <div>
               <h3 className="text-lg font-semibold mb-2">Interests</h3>
-              {Object.entries(userData.interests).map(([type, interests]) => (
+              {editedProfile.interests && Object.entries(editedProfile.interests).map(([type, interests]) => (
                 <div key={type} className="mb-2">
                   <span className="font-medium capitalize">{type}: </span>
                   {interests.map((interest, index) => (
-                    <Badge key={index} variant="secondary" className="mr-1">
+                    <Badge key={`${type}-${interest}-${index}`} variant="secondary" className="mr-1">
                       {interest}
                       {isEditing && (
                         <button
-                          onClick={() => handleInterestRemove(type, interest)}
+                          onClick={() => handleInterestRemove(type as InterestType, interest)}
                           className="ml-1 text-xs text-red-500"
                         >
                           ×
@@ -162,7 +269,7 @@ export default function MyProfilePage() {
                 <form onSubmit={handleInterestAdd} className="mt-2 flex items-center space-x-2">
                   <select
                     value={newInterest.type}
-                    onChange={(e) => setNewInterest(prev => ({ ...prev, type: e.target.value }))}
+                    onChange={(e) => setNewInterest(prev => ({ ...prev, type: e.target.value as InterestType }))}
                     className="border rounded p-1"
                   >
                     <option value="buy">Buy</option>
@@ -183,15 +290,80 @@ export default function MyProfilePage() {
         </CardContent>
       </Card>
 
+      {currentProfile.type === 'trader' && outstandingLoans.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Current Loans</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Financier ID</TableHead>
+                  <TableHead>Amount Owed</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {outstandingLoans.map(([financierId, amount]) => (
+                  <TableRow key={`loan-${financierId}`}>
+                    <TableCell>{financierId}</TableCell>
+                    <TableCell>${amount.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          type="number"
+                          placeholder="Amount to repay"
+                          value={repaymentAmount[financierId] || ''}
+                          onChange={(e) => setRepaymentAmount(prev => ({ ...prev, [financierId]: parseFloat(e.target.value) }))}
+                          className="w-32"
+                        />
+                        <Button onClick={() => handleRepayment(financierId)}>Repay</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">
-            Your transaction history will be displayed here. This section can include a table or list of your recent transactions,
-            including details such as date, commodity, quantity, price, and transaction status.
-          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Commodity</TableHead>
+                <TableHead>Quantity</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Role</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {transactions.map((transaction, index) => (
+                <TableRow key={`transaction-${transaction.id}-${index}`}>
+                  <TableCell>{transaction.date}</TableCell>
+                  <TableCell>{transaction.type}</TableCell>
+                  <TableCell>{transaction.commodity}</TableCell>
+                  <TableCell>{transaction.quantity}</TableCell>
+                  <TableCell>${transaction.price.toFixed(2)}</TableCell>
+                  
+                  <TableCell>${transaction.total.toFixed(2)}</TableCell>
+                  <TableCell>
+                    {transaction.buyerId === currentProfile.id ? 'Buyer' : 
+                     transaction.sellerId === currentProfile.id ? 'Seller' : 'Financier'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
