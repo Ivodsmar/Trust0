@@ -27,6 +27,7 @@ export default function TransactionPage() {
     price: 0,
     quantity: 0,
     commodity: '',
+    traderName: '',
   })
   const [counterparty, setCounterparty] = useState<any>(null)
 
@@ -36,19 +37,17 @@ export default function TransactionPage() {
       price: Number(searchParams.get('price')) || 0,
       quantity: Number(searchParams.get('quantity')) || 0,
       commodity: searchParams.get('commodity') || '',
+      traderName: searchParams.get('traderName') || '',
     })
 
-    // Extract the actual profile ID from the transaction ID
-    const [transactionType, profileId] = (id as string).split('-')
-    
-    // Find the counterparty based on the extracted profile ID
-    const foundCounterparty = profiles.find(p => p.id === profileId)
+    // Find the counterparty based on the trader name
+    const foundCounterparty = profiles.find(p => p.name === searchParams.get('traderName'))
     if (foundCounterparty) {
       setCounterparty(foundCounterparty)
     } else {
-      console.error('Counterparty not found for id:', profileId)
+      console.error('Counterparty not found for name:', searchParams.get('traderName'))
     }
-  }, [searchParams, profiles, id])
+  }, [searchParams, profiles])
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
