@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { useProfiles, Profile } from '@/contexts/ProfileContext'
+import React, { useState, useEffect } from 'react'
+import { useProfiles } from '@/contexts/ProfileContext'
 import { useTransactions, Transaction } from '@/contexts/TransactionContext'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,16 +18,36 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 type InterestType = 'buy' | 'sell' | 'finance'
 
 export default function MyProfilePage() {
-  const { currentProfile, setProfiles, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
-  const { getTransactionsByProfile, getTotalLoanedAmount } = useTransactions()
+  const { currentProfile, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
+  const { getTransactionsByProfile, addTransaction } = useTransactions()
   const [isEditing, setIsEditing] = useState(false)
-  const [editedProfile, setEditedProfile] = useState(currentProfile)
+  const [editedProfile, setEditedProfile] = useState(currentProfile || null)
   const [newInterest, setNewInterest] = useState({ type: 'buy' as InterestType, value: '' })
   const [repaymentAmount, setRepaymentAmount] = useState<{ [key: string]: number }>({})
   const [error, setError] = useState<string | null>(null)
   const [currentLoans, setCurrentLoans] = useState<{ [key: string]: number }>({})
 
-  const updateLoans = useCallback(() => {
+  useEffect(() => {
+    if (currentProfile) {
+      setEditedProfile(currentProfile)
+      loadLoansFromStorage(currentProfile.id)
+    }
+  }, [currentProfile])
+
+  const loadLoansFromStorage = (profileId: string) => {
+    const storedLoans = localStorage.getItem(`loans_${profileId}`)
+    if (storedLoans) {
+      setCurrentLoans(JSON.parse(storedLoans))
+    } else {
+      updateLoans()
+    }
+  }
+
+  const saveLoansToStorage = (profileId: string, loans: { [key: string]: number }) => {
+    localStorage.setItem(`loans_${profileId}`, JSON.stringify(loans))
+  }
+
+  const updateLoans = () => {
     if (currentProfile) {
       const transactions = getTransactionsByProfile(currentProfile.id)
       const loans = transactions.filter((t: Transaction) =>
@@ -39,36 +59,25 @@ export default function MyProfilePage() {
         if (loan.type === 'finance' && loan.financierId) {
           acc[loan.financierId] = (acc[loan.financierId] || 0) + (loan.loanAmount || 0)
         } else if (loan.type === 'repay' && loan.financierId) {
-          acc[loan.financierId] = Math.max((acc[loan.financierId] || 0) - (loan.loanAmount || 0), 0)
+          acc[loan.financierId] = (acc[loan.financierId] || 0) - (loan.loanAmount || 0)
         }
         return acc
       }, {})
 
-      // Remove any fully repaid loans
-      Object.keys(newLoans).forEach(key => {
-        if (newLoans[key] <= 0) {
-          delete newLoans[key]
-        }
-      })
-
       setCurrentLoans(newLoans)
+      saveLoansToStorage(currentProfile.id, newLoans)
     }
-  }, [currentProfile, getTransactionsByProfile])
-
-  useEffect(() => {
-    if (currentProfile) {
-      setEditedProfile(currentProfile)
-      updateLoans()
-    }
-  }, [currentProfile, updateLoans])
+  }
 
   if (!currentProfile || !editedProfile) {
     return <div>Loading...</div>
   }
 
   const transactions = getTransactionsByProfile(currentProfile.id)
-  const totalLoanedAmount = getTotalLoanedAmount(currentProfile.id)
   const transactionVolume = transactions.reduce((sum, t) => sum + t.total, 0)
+
+  // Filter out fully repaid loans
+  const outstandingLoans = Object.entries(currentLoans).filter(([, amount]) => amount > 0)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -103,7 +112,6 @@ export default function MyProfilePage() {
 
   const handleSave = () => {
     if (editedProfile) {
-      console.log('Saving user data:', editedProfile)
       updateProfileBalance(currentProfile.id, editedProfile.balance)
       if (editedProfile.interests) {
         updateProfileInterests(currentProfile.id, editedProfile.interests)
@@ -113,70 +121,48 @@ export default function MyProfilePage() {
   }
 
   const handleRepayment = (financierId: string) => {
-    const amount = repaymentAmount[financierId];
+    const amount = repaymentAmount[financierId]
     if (amount && amount > 0) {
-      if (amount > editedProfile.balance) {
-        setError("Insufficient balance for repayment");
-        return;
+      if (amount > currentProfile.balance) {
+        setError("Insufficient balance for repayment")
+        return
       }
       if (amount > currentLoans[financierId]) {
-        setError("Repayment amount exceeds the outstanding loan");
-        return;
+        setError("Repayment amount exceeds the outstanding loan")
+        return
       }
-  
-      // Perform the repayment
-      repayLoan(currentProfile.id, financierId, amount);
-  
-      // Update the currentLoans immediately
-      setCurrentLoans((prevLoans) => {
-        const updatedLoans = { ...prevLoans };
-        updatedLoans[financierId] -= amount;
-        if (updatedLoans[financierId] <= 0) {
-          delete updatedLoans[financierId];
-        }
-        return updatedLoans;
-      });
-  
-      // Reset repayment amount and update balance in the component
-      setRepaymentAmount((prev) => ({ ...prev, [financierId]: 0 }));
-      setEditedProfile((prev) => ({
+      repayLoan(currentProfile.id, financierId, amount)
+      addTransaction({
+        type: 'repay',
+        commodity: 'Loan Repayment',
+        quantity: 1,
+        price: amount,
+        total: amount,
+        buyerId: currentProfile.id,
+        sellerId: '',
+        financierId: financierId,
+        loanAmount: amount
+      })
+      const updatedLoans = {
+        ...currentLoans,
+        [financierId]: currentLoans[financierId] - amount
+      }
+      setCurrentLoans(updatedLoans)
+      saveLoansToStorage(currentProfile.id, updatedLoans)
+      setRepaymentAmount(prev => ({ ...prev, [financierId]: 0 }))
+      setError(null)
+      setEditedProfile(prev => ({
         ...prev!,
-        balance: prev!.balance - amount,
-      }));
-  
-      // Update profiles in localStorage using setProfiles
-      setProfiles((prevProfiles: Profile[]) => {
-        const updatedProfiles = prevProfiles.map((profile: Profile) => {
-          if (profile.id === currentProfile?.id) {
-            return {
-              ...profile,
-              balance: profile.balance - amount,
-              loans: currentLoans,
-            };
-          }
-          return profile;
-        });
-  
-        // Save updated profiles to localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('profiles', JSON.stringify(updatedProfiles));
-        }
-        return updatedProfiles;
-      });
-  
-      // Clear errors after a successful transaction
-      setError(null);
+        balance: prev!.balance - amount
+      }))
     } else {
-      setError("Please enter a valid repayment amount");
+      setError("Please enter a valid repayment amount")
     }
-  };
-  
-  
-  
-  
+  }
+
   const availableFunds = currentProfile.availableFunds || currentProfile.balance
   const totalFunds = currentProfile.totalFunds || currentProfile.balance
-  const usedFundsPercentage = currentProfile.type === 'financier' ? ((totalLoanedAmount / totalFunds) * 100) : 0
+  const usedFundsPercentage = currentProfile.type === 'financier' ? ((transactionVolume / totalFunds) * 100) : 0
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -266,7 +252,7 @@ export default function MyProfilePage() {
                 <Progress value={usedFundsPercentage} className="w-full" />
                 <div className="flex justify-between mt-2">
                   <span>Available: ${availableFunds.toFixed(2)}</span>
-                  <span>In Use: ${totalLoanedAmount.toFixed(2)}</span>
+                  <span>In Use: ${transactionVolume.toFixed(2)}</span>
                   <span>Total: ${totalFunds.toFixed(2)}</span>
                 </div>
               </div>
@@ -316,7 +302,7 @@ export default function MyProfilePage() {
         </CardContent>
       </Card>
 
-      {currentProfile.type === 'trader' && Object.keys(currentLoans).length > 0 && (
+      {currentProfile.type === 'trader' && outstandingLoans.length > 0 && (
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Current Loans</CardTitle>
@@ -331,7 +317,7 @@ export default function MyProfilePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.entries(currentLoans).map(([financierId, amount]) => (
+                {outstandingLoans.map(([financierId, amount]) => (
                   <TableRow key={`loan-${financierId}`}>
                     <TableCell>{financierId}</TableCell>
                     <TableCell>${amount.toFixed(2)}</TableCell>
@@ -365,7 +351,6 @@ export default function MyProfilePage() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Type</TableHead>
-                
                 <TableHead>Commodity</TableHead>
                 <TableHead>Quantity</TableHead>
                 <TableHead>Price</TableHead>

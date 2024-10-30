@@ -129,20 +129,24 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }
 
   const repayLoan = (traderId: string, financierId: string, amount: number) => {
-    setProfiles((prevProfiles) =>
-      prevProfiles.map((profile) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile => {
         if (profile.id === traderId && profile.type === 'trader') {
-          const updatedLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) - amount };
-          if (updatedLoans[financierId] <= 0) delete updatedLoans[financierId];
+          const updatedLoans = {
+            ...profile.loans,
+            [financierId]: Math.max((profile.loans?.[financierId] || 0) - amount, 0)
+          };
           return { ...profile, balance: profile.balance - amount, loans: updatedLoans };
         }
         if (profile.id === financierId && profile.type === 'financier') {
-          return { ...profile, balance: profile.balance + amount, availableFunds: (profile.availableFunds || 0) + amount };
+          const updatedAvailableFunds = (profile.availableFunds || 0) + amount;
+          return { ...profile, balance: profile.balance + amount, availableFunds: updatedAvailableFunds };
         }
         return profile;
       })
     );
   };
+  
 
   const updateProfileInterests = (id: string, newInterests: Interest) => {
     setProfiles(prevProfiles =>
