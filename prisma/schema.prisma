@@ -1,0 +1,53 @@
+// schema.prisma
+
+datasource db {
+  provider = "sqlite" // or "postgresql" if you are using PostgreSQL
+  url      = "file:./dev.db" // Change this path as needed
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+model Profile {
+  id             String         @id @default(uuid())
+  name           String
+  email          String?
+  bio            String?
+  balance        Float
+  type           String
+  interests      Interest[]
+  totalFunds     Float?
+  availableFunds Float?
+  loans          Loan[]         @relation("TraderLoans")   // Relation for loans as a trader
+  finances       Loan[]         @relation("FinancierLoans") // Relation for loans as a financier
+  transactions   Transaction[]
+}
+
+model Interest {
+  id        String   @id @default(uuid())
+  type      String
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id])
+}
+
+model Loan {
+  id            String   @id @default(uuid())
+  amount        Float
+  financierId   String
+  traderId      String
+  financier     Profile  @relation("FinancierLoans", fields: [financierId], references: [id])
+  trader        Profile  @relation("TraderLoans", fields: [traderId], references: [id])
+}
+
+model Transaction {
+  id         String   @id @default(uuid())
+  type       String
+  commodity  String
+  quantity   Int
+  price      Float
+  total      Float
+  profileId  String
+  profile    Profile  @relation(fields: [profileId], references: [id])
+}
