@@ -1,97 +1,78 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type Interest = {
-  buy: string[]
-  sell: string[]
-  finance: string[]
-}
+  buy: string[];
+  sell: string[];
+  finance: string[];
+};
 
 export type Profile = {
-  id: string
-  name: string
-  email?: string
-  bio?: string
-  balance: number
-  type: 'trader' | 'financier'
-  interests: Interest
-  totalFunds?: number
-  availableFunds?: number
-  loans?: { [financierId: string]: number } // Loans owed to each financier
-}
+  id: string;
+  name: string;
+  email?: string;
+  bio?: string;
+  balance: number;
+  type: 'trader' | 'financier';
+  interests: Interest;
+  totalFunds?: number;
+  availableFunds?: number;
+  loans?: { [financierId: string]: number };
+};
 
 type ProfileContextType = {
-  profiles: Profile[]
-  currentProfile: Profile | null
-  setCurrentProfile: (profile: Profile | null) => void
-  updateProfileBalance: (id: string, newBalance: number) => void
-  addProfile: (profile: Omit<Profile, 'id'>) => void
-  getProfileById: (id: string) => Profile | undefined
-  updateFinancierFunds: (traderId: string, financierId: string, loanAmount: number) => void
-  updateProfileInterests: (id: string, newInterests: Interest) => void
-  repayLoan: (traderId: string, financierId: string, amount: number) => void
-}
+  profiles: Profile[];
+  setProfiles: React.Dispatch<React.SetStateAction<Profile[]>>;
+  currentProfile: Profile | null;
+  setCurrentProfile: (profile: Profile | null) => void;
+  updateProfileBalance: (id: string, newBalance: number) => void;
+  addProfile: (profile: Omit<Profile, 'id'>) => void;
+  getProfileById: (id: string) => Profile | undefined;
+  updateFinancierFunds: (traderId: string, financierId: string, loanAmount: number) => void;
+  updateProfileInterests: (id: string, newInterests: Interest) => void;
+  repayLoan: (traderId: string, financierId: string, amount: number) => void;
+};
 
-const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
+const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export const useProfiles = () => {
-  const context = useContext(ProfileContext)
+  const context = useContext(ProfileContext);
   if (!context) {
-    throw new Error('useProfiles must be used within a ProfileProvider')
+    throw new Error('useProfiles must be used within a ProfileProvider');
   }
-  return context
-}
+  return context;
+};
 
 const initialProfiles: Profile[] = [
-  { 
-    id: '1', 
-    name: 'Trader A', 
-    balance: 100000, 
-    type: 'trader', 
-    interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] },
-    loans: {} // Start with no loans
-  },
-  { 
-    id: '2', 
-    name: 'Trader B', 
-    balance: 150000, 
-    type: 'trader', 
-    interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] },
-    loans: {} // Start with no loans
-  },
-  { 
-    id: '3', 
-    name: 'Financier X', 
-    balance: 500000, 
-    type: 'financier', 
-    totalFunds: 500000, 
-    availableFunds: 500000, 
-    interests: { buy: [], sell: [], finance: ['Invoice Financing', 'Trade Finance'] }
-  },
-]
+  { id: '1', name: 'Trader A', balance: 100000, type: 'trader', interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] }, loans: {} },
+  { id: '2', name: 'Trader B', balance: 150000, type: 'trader', interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] }, loans: {} },
+  { id: '3', name: 'Financier X', balance: 500000, type: 'financier', totalFunds: 500000, availableFunds: 500000, interests: { buy: [], sell: [], finance: ['Invoice Financing', 'Trade Finance'] } },
+];
 
 export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profiles, setProfiles] = useState<Profile[]>(() => {
     if (typeof window !== 'undefined') {
-      const storedProfiles = localStorage.getItem('profiles')
-      return storedProfiles ? JSON.parse(storedProfiles) : initialProfiles
+      const storedProfiles = localStorage.getItem('profiles');
+      return storedProfiles ? JSON.parse(storedProfiles) : initialProfiles;
     }
-    return initialProfiles
-  })
-  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null)
+    return initialProfiles;
+  });
+
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     if (profiles.length > 0 && !currentProfile) {
-      setCurrentProfile(profiles[0])
+      setCurrentProfile(profiles[0]);
     }
-  }, [profiles, currentProfile])
+  }, [profiles, currentProfile]);
 
   useEffect(() => {
+    // Persist profiles to localStorage every time they change
     if (typeof window !== 'undefined') {
-      localStorage.setItem('profiles', JSON.stringify(profiles))
+      localStorage.setItem('profiles', JSON.stringify(profiles));
     }
-  }, [profiles])
+  }, [profiles]);
 
   const updateProfileBalance = (id: string, newBalance: number) => {
     setProfiles(prevProfiles =>
@@ -127,6 +108,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setProfiles(prevProfiles => [...prevProfiles, newProfile])
   }
 
+
   const getProfileById = (id: string) => {
     return profiles.find(profile => profile.id === id)
   }
@@ -147,19 +129,20 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }
 
   const repayLoan = (traderId: string, financierId: string, amount: number) => {
-    setProfiles(prevProfiles =>
-      prevProfiles.map(profile => {
+    setProfiles((prevProfiles) =>
+      prevProfiles.map((profile) => {
         if (profile.id === traderId && profile.type === 'trader') {
-          const newLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) - amount }
-          return { ...profile, balance: profile.balance - amount, loans: newLoans }
+          const updatedLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) - amount };
+          if (updatedLoans[financierId] <= 0) delete updatedLoans[financierId];
+          return { ...profile, balance: profile.balance - amount, loans: updatedLoans };
         }
         if (profile.id === financierId && profile.type === 'financier') {
-          return { ...profile, balance: profile.balance + amount, availableFunds: (profile.availableFunds || 0) + amount }
+          return { ...profile, balance: profile.balance + amount, availableFunds: (profile.availableFunds || 0) + amount };
         }
-        return profile
+        return profile;
       })
-    )
-  }
+    );
+  };
 
   const updateProfileInterests = (id: string, newInterests: Interest) => {
     setProfiles(prevProfiles =>
@@ -178,10 +161,11 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   return (
     <ProfileContext.Provider 
       value={{ 
-        profiles, 
-        currentProfile, 
-        setCurrentProfile, 
-        updateProfileBalance, 
+        profiles,
+        setProfiles,
+        currentProfile,
+        setCurrentProfile,
+        updateProfileBalance,
         addProfile,
         getProfileById,
         updateFinancierFunds,
@@ -191,5 +175,5 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     >
       {children}
     </ProfileContext.Provider>
-  )
-}
+  );
+};

@@ -101,27 +101,20 @@ export default function HistoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.length > 0 ? (
-                filteredTransactions.map((transaction, index) => (
-                  <TableRow key={`${transaction.id}-${index}`}>
-                    <TableCell>{transaction.date}</TableCell>
-                    <TableCell className={transaction.type === 'buy' ? 'text-green-600' : 'text-red-600'}>
-                      {transaction.type.toUpperCase()}
-                    </TableCell>
-                    <TableCell>{transaction.commodity}</TableCell>
-                    <TableCell>{transaction.quantity}</TableCell>
-                    <TableCell>${transaction.price.toFixed(2)}</TableCell>
-                    <TableCell>${transaction.total.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-4">
-                    No transactions found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
+  {filteredTransactions.map((transaction, index) => (
+    <TableRow key={`${transaction.id}-${index}`}>
+      <TableCell>{transaction.date}</TableCell>
+      <TableCell className={transaction.type === 'buy' ? 'text-green-600' : 'text-red-600'}>
+        {transaction.type.toUpperCase()}
+      </TableCell>
+      <TableCell>{transaction.commodity}</TableCell>
+      <TableCell>{transaction.quantity}</TableCell>
+      <TableCell>${transaction.price.toFixed(2)}</TableCell>
+      <TableCell>${transaction.total.toFixed(2)}</TableCell>
+    </TableRow>
+  ))}
+</TableBody>
+
           </Table>
         </CardContent>
       </Card>

@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useProfiles } from '@/contexts/ProfileContext'
+import React, { useState, useEffect, useCallback } from 'react'
+import { useProfiles, Profile } from '@/contexts/ProfileContext'
 import { useTransactions, Transaction } from '@/contexts/TransactionContext'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,8 +18,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 type InterestType = 'buy' | 'sell' | 'finance'
 
 export default function MyProfilePage() {
-  const { currentProfile, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
-  const { getTransactionsByProfile, getTotalLoanedAmount, addTransaction } = useTransactions()
+  const { currentProfile, setProfiles, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
+  const { getTransactionsByProfile, getTotalLoanedAmount } = useTransactions()
   const [isEditing, setIsEditing] = useState(false)
   const [editedProfile, setEditedProfile] = useState(currentProfile)
   const [newInterest, setNewInterest] = useState({ type: 'buy' as InterestType, value: '' })
@@ -27,14 +27,7 @@ export default function MyProfilePage() {
   const [error, setError] = useState<string | null>(null)
   const [currentLoans, setCurrentLoans] = useState<{ [key: string]: number }>({})
 
-  useEffect(() => {
-    if (currentProfile) {
-      setEditedProfile(currentProfile)
-      updateLoans()
-    }
-  }, [currentProfile])
-
-  const updateLoans = () => {
+  const updateLoans = useCallback(() => {
     if (currentProfile) {
       const transactions = getTransactionsByProfile(currentProfile.id)
       const loans = transactions.filter((t: Transaction) =>
@@ -46,14 +39,28 @@ export default function MyProfilePage() {
         if (loan.type === 'finance' && loan.financierId) {
           acc[loan.financierId] = (acc[loan.financierId] || 0) + (loan.loanAmount || 0)
         } else if (loan.type === 'repay' && loan.financierId) {
-          acc[loan.financierId] = (acc[loan.financierId] || 0) - (loan.loanAmount || 0)
+          acc[loan.financierId] = Math.max((acc[loan.financierId] || 0) - (loan.loanAmount || 0), 0)
         }
         return acc
       }, {})
 
+      // Remove any fully repaid loans
+      Object.keys(newLoans).forEach(key => {
+        if (newLoans[key] <= 0) {
+          delete newLoans[key]
+        }
+      })
+
       setCurrentLoans(newLoans)
     }
-  }
+  }, [currentProfile, getTransactionsByProfile])
+
+  useEffect(() => {
+    if (currentProfile) {
+      setEditedProfile(currentProfile)
+      updateLoans()
+    }
+  }, [currentProfile, updateLoans])
 
   if (!currentProfile || !editedProfile) {
     return <div>Loading...</div>
@@ -62,9 +69,6 @@ export default function MyProfilePage() {
   const transactions = getTransactionsByProfile(currentProfile.id)
   const totalLoanedAmount = getTotalLoanedAmount(currentProfile.id)
   const transactionVolume = transactions.reduce((sum, t) => sum + t.total, 0)
-
-  // Filter out fully repaid loans
-  const outstandingLoans = Object.entries(currentLoans).filter(([_, amount]) => amount > 0)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -109,45 +113,67 @@ export default function MyProfilePage() {
   }
 
   const handleRepayment = (financierId: string) => {
-    const amount = repaymentAmount[financierId]
+    const amount = repaymentAmount[financierId];
     if (amount && amount > 0) {
-      if (amount > currentProfile.balance) {
-        setError("Insufficient balance for repayment")
-        return
+      if (amount > editedProfile.balance) {
+        setError("Insufficient balance for repayment");
+        return;
       }
       if (amount > currentLoans[financierId]) {
-        setError("Repayment amount exceeds the outstanding loan")
-        return
+        setError("Repayment amount exceeds the outstanding loan");
+        return;
       }
-      repayLoan(currentProfile.id, financierId, amount)
-      addTransaction({
-        type: 'repay',
-        commodity: 'Loan Repayment',
-        quantity: 1,
-        price: amount,
-        total: amount,
-        buyerId: currentProfile.id,
-        sellerId: '',
-        financierId: financierId,
-        loanAmount: amount
-      })
-      // Update the current loans immediately
-      setCurrentLoans(prev => ({
-        ...prev,
-        [financierId]: prev[financierId] - amount
-      }))
-      setRepaymentAmount(prev => ({ ...prev, [financierId]: 0 }))
-      setError(null)
-      // Update the profile to reflect the new balance
-      setEditedProfile(prev => ({
+  
+      // Perform the repayment
+      repayLoan(currentProfile.id, financierId, amount);
+  
+      // Update the currentLoans immediately
+      setCurrentLoans((prevLoans) => {
+        const updatedLoans = { ...prevLoans };
+        updatedLoans[financierId] -= amount;
+        if (updatedLoans[financierId] <= 0) {
+          delete updatedLoans[financierId];
+        }
+        return updatedLoans;
+      });
+  
+      // Reset repayment amount and update balance in the component
+      setRepaymentAmount((prev) => ({ ...prev, [financierId]: 0 }));
+      setEditedProfile((prev) => ({
         ...prev!,
-        balance: prev!.balance - amount
-      }))
+        balance: prev!.balance - amount,
+      }));
+  
+      // Update profiles in localStorage using setProfiles
+      setProfiles((prevProfiles: Profile[]) => {
+        const updatedProfiles = prevProfiles.map((profile: Profile) => {
+          if (profile.id === currentProfile?.id) {
+            return {
+              ...profile,
+              balance: profile.balance - amount,
+              loans: currentLoans,
+            };
+          }
+          return profile;
+        });
+  
+        // Save updated profiles to localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('profiles', JSON.stringify(updatedProfiles));
+        }
+        return updatedProfiles;
+      });
+  
+      // Clear errors after a successful transaction
+      setError(null);
     } else {
-      setError("Please enter a valid repayment amount")
+      setError("Please enter a valid repayment amount");
     }
-  }
-
+  };
+  
+  
+  
+  
   const availableFunds = currentProfile.availableFunds || currentProfile.balance
   const totalFunds = currentProfile.totalFunds || currentProfile.balance
   const usedFundsPercentage = currentProfile.type === 'financier' ? ((totalLoanedAmount / totalFunds) * 100) : 0
@@ -290,7 +316,7 @@ export default function MyProfilePage() {
         </CardContent>
       </Card>
 
-      {currentProfile.type === 'trader' && outstandingLoans.length > 0 && (
+      {currentProfile.type === 'trader' && Object.keys(currentLoans).length > 0 && (
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Current Loans</CardTitle>
@@ -305,7 +331,7 @@ export default function MyProfilePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {outstandingLoans.map(([financierId, amount]) => (
+                {Object.entries(currentLoans).map(([financierId, amount]) => (
                   <TableRow key={`loan-${financierId}`}>
                     <TableCell>{financierId}</TableCell>
                     <TableCell>${amount.toFixed(2)}</TableCell>
@@ -339,6 +365,7 @@ export default function MyProfilePage() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Type</TableHead>
+                
                 <TableHead>Commodity</TableHead>
                 <TableHead>Quantity</TableHead>
                 <TableHead>Price</TableHead>
@@ -354,7 +381,6 @@ export default function MyProfilePage() {
                   <TableCell>{transaction.commodity}</TableCell>
                   <TableCell>{transaction.quantity}</TableCell>
                   <TableCell>${transaction.price.toFixed(2)}</TableCell>
-                  
                   <TableCell>${transaction.total.toFixed(2)}</TableCell>
                   <TableCell>
                     {transaction.buyerId === currentProfile.id ? 'Buyer' : 
