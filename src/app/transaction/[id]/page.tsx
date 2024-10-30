@@ -108,29 +108,66 @@ export default function TransactionPage() {
 
   const handleTransaction = () => {
     if (!currentProfile || !counterparty) {
-      setError('Current profile or counterparty not found')
-      return
+      setError('Current profile or counterparty not found');
+      return;
     }
-
-    const totalAmount = transactionDetails.price * transactionDetails.quantity
-    let loanedAmount = 0
-
+  
+    const totalAmount = transactionDetails.price * transactionDetails.quantity;
+    let loanedAmount = 0;
+  
+    // Check for selected financier and validate loan amount
     if (selectedFinancier && loanAmount) {
-      loanedAmount = parseFloat(loanAmount)
-      const financier = getProfileById(selectedFinancier)
-      if (financier && financier.balance >= loanedAmount) {
-        updateFinancierFunds(financier.id, (-loanedAmount).toString(), loanedAmount)
-        updateProfileBalance(currentProfile.id, currentProfile.balance + loanedAmount)
+      loanedAmount = parseFloat(loanAmount);
+      const financier = getProfileById(selectedFinancier);
+  
+      if (financier) {
+        // Check if the financier has enough funds
+        if (financier.balance >= loanedAmount) {
+          // Deduct the loan amount from the financier's balance
+          updateProfileBalance(financier.id, financier.balance - loanedAmount);
+  
+          // Add the loan amount to the trader's balance
+          updateProfileBalance(currentProfile.id, currentProfile.balance + loanedAmount);
+  
+          // Register the loan in the trader's profile under loans
+          const updatedLoans = {
+            ...currentProfile.loans,
+            [financier.id]: ((currentProfile.loans?.[financier.id] || 0) + loanedAmount),
+          };
+          currentProfile.loans = updatedLoans;
+  
+          // Add the loan transaction
+          addTransaction({
+            type: 'finance',
+            commodity: 'Loan',
+            quantity: 1,
+            price: loanedAmount,
+            total: loanedAmount,
+            buyerId: currentProfile.id,
+            sellerId: '',
+            financierId: financier.id,
+            loanAmount: loanedAmount,
+          });
+        } else {
+          setError('Insufficient financier balance for loan');
+          return;
+        }
       } else {
-        setError('Insufficient financier balance')
-        return
+        setError('Financier not found');
+        return;
       }
     }
-
+  
+    // Proceed with the purchase transaction if the trader has enough balance after the loan
     if (transactionDetails.type === 'buy') {
       if (currentProfile.balance >= totalAmount) {
-        updateProfileBalance(currentProfile.id, currentProfile.balance - totalAmount)
-        updateProfileBalance(counterparty.id, counterparty.balance + totalAmount)
+        // Deduct the purchase amount from the trader's balance
+        updateProfileBalance(currentProfile.id, currentProfile.balance - totalAmount);
+        
+        // Add the purchase amount to the counterparty's balance
+        updateProfileBalance(counterparty.id, counterparty.balance + totalAmount);
+  
+        // Register the buy transaction
         addTransaction({
           type: 'buy',
           commodity: transactionDetails.commodity,
@@ -141,27 +178,19 @@ export default function TransactionPage() {
           sellerId: counterparty.id,
           financierId: selectedFinancier || undefined,
           loanAmount: loanedAmount,
-        })
-        if (loanedAmount > 0) {
-          addTransaction({
-            type: 'finance',
-            commodity: 'Loan',
-            quantity: 1,
-            price: loanedAmount,
-            total: loanedAmount,
-            buyerId: currentProfile.id,
-            sellerId: '',
-            financierId: selectedFinancier,
-            loanAmount: loanedAmount,
-          })
-        }
-        router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
+        });
+  
+        // Redirect to success page
+        router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`);
       } else {
-        setError('Insufficient balance')
+        setError('Insufficient balance for purchase');
       }
     } else if (transactionDetails.type === 'sell') {
-      updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount)
-      updateProfileBalance(counterparty.id, counterparty.balance - totalAmount)
+      // Process a sell transaction if it's a sell
+      updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount);
+      updateProfileBalance(counterparty.id, counterparty.balance - totalAmount);
+  
+      // Register the sell transaction
       addTransaction({
         type: 'sell',
         commodity: transactionDetails.commodity,
@@ -172,23 +201,15 @@ export default function TransactionPage() {
         sellerId: currentProfile.id,
         financierId: selectedFinancier || undefined,
         loanAmount: loanedAmount,
-      })
-      if (loanedAmount > 0) {
-        addTransaction({
-          type: 'finance',
-          commodity: 'Loan',
-          quantity: 1,
-          price: loanedAmount,
-          total: loanedAmount,
-          buyerId: counterparty.id,
-          sellerId: '',
-          financierId: selectedFinancier,
-          loanAmount: loanedAmount,
-        })
-      }
-      router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
+      });
+  
+      // Redirect to success page
+      router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`);
     }
-  }
+  };
+  
+  
+  
 
   const financiers = profiles.filter(p => p.type === 'financier')
 

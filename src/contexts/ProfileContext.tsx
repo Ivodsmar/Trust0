@@ -114,19 +114,36 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }
 
   const updateFinancierFunds = (traderId: string, financierId: string, loanAmount: number) => {
-    setProfiles(prevProfiles =>
-      prevProfiles.map(profile => {
-        if (profile.id === traderId && profile.type === 'trader') {
-          const newLoans = { ...profile.loans, [financierId]: (profile.loans?.[financierId] || 0) + loanAmount }
-          return { ...profile, loans: newLoans }
-        }
+    setProfiles((prevProfiles) =>
+      prevProfiles.map((profile) => {
         if (profile.id === financierId && profile.type === 'financier') {
-          return { ...profile, availableFunds: (profile.availableFunds || 0) - loanAmount }
+          if (profile.availableFunds && profile.availableFunds >= loanAmount) {
+            return {
+              ...profile,
+              balance: profile.balance - loanAmount, // Subtrai do balance do financier
+              availableFunds: profile.availableFunds - loanAmount, // Subtrai do availableFunds
+            };
+          } else {
+            console.error("O financier não possui fundos suficientes.");
+            return profile; // Retorna sem mudanças se não houver fundos
+          }
         }
-        return profile
+  
+        if (profile.id === traderId && profile.type === 'trader') {
+          return {
+            ...profile,
+            loans: {
+              ...profile.loans,
+              [financierId]: (profile.loans?.[financierId] || 0) + loanAmount, // Adiciona ao empréstimo do trader
+            },
+          };
+        }
+  
+        return profile;
       })
-    )
-  }
+    );
+  };
+  
 
   const repayLoan = (traderId: string, financierId: string, amount: number) => {
     setProfiles(prevProfiles =>
@@ -146,6 +163,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       })
     );
   };
+  
   
 
   const updateProfileInterests = (id: string, newInterests: Interest) => {
