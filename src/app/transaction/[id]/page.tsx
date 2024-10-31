@@ -1,3 +1,4 @@
+
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -6,14 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { AlertCircle, Upload } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useProfiles } from '@/contexts/ProfileContext'
 import { useTransactions } from '@/contexts/TransactionContext'
 
+interface Profile {
+  id: string;
+  name: string;
+  balance: number;
+  type: 'trader' | 'financier';
+}
+
 export default function TransactionPage() {
-  // const { id } = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { profiles, currentProfile, updateProfileBalance, getProfileById } = useProfiles()
@@ -30,13 +36,6 @@ export default function TransactionPage() {
     commodity: '',
     traderName: '',
   })
-  interface Profile {
-    id: string;
-    name: string;
-    balance: number;
-    type: string;
-  }
-
   const [counterparty, setCounterparty] = useState<Profile | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,11 +55,9 @@ export default function TransactionPage() {
         setCounterparty(foundCounterparty)
       } else {
         setError(`Counterparty not found for name: ${traderName}`)
-        console.error(`Counterparty not found for name: ${traderName}`)
       }
     } else {
       setError('Trader name not provided in search parameters')
-      console.error('Trader name not provided in search parameters')
     }
   }, [searchParams, profiles])
 
@@ -97,7 +94,6 @@ export default function TransactionPage() {
       const data = await response.json()
       setAnalysisResult(data.analysis)
     } catch (error) {
-      console.error('Error analyzing contract:', error)
       setAnalysisResult(
         error instanceof Error ? error.message : 'An error occurred while analyzing the contract. Please try again.'
       )
@@ -106,150 +102,106 @@ export default function TransactionPage() {
     }
   }
 
+  const requestLoan = () => {
+    if (!selectedFinancier || !loanAmount) {
+      setError('Please select a financier and enter a loan amount.')
+      return
+    }
+    const loanedAmount = parseFloat(loanAmount)
+    const financier = getProfileById(selectedFinancier)
+
+    if (financier && financier.balance >= loanedAmount) {
+      updateProfileBalance(financier.id, financier.balance - loanedAmount)
+      updateProfileBalance(currentProfile!.id, currentProfile!.balance + loanedAmount)
+
+      addTransaction({
+        type: 'finance',
+        commodity: 'Loan',
+        quantity: 1,
+        price: loanedAmount,
+        total: loanedAmount,
+        buyerId: currentProfile!.id,
+        sellerId: '',
+        financierId: financier.id,
+        loanAmount: loanedAmount,
+      })
+
+      setError(null)
+      alert(`Loan of $${loanedAmount} from ${financier.name} has been successfully applied to your balance.`)
+    } else {
+      setError('Insufficient financier balance for loan or financier not found.')
+    }
+  }
+
   const handleTransaction = () => {
     if (!currentProfile || !counterparty) {
-      setError('Current profile or counterparty not found');
-      return;
+      setError('Current profile or counterparty not found')
+      return
     }
-  
-    const totalAmount = transactionDetails.price * transactionDetails.quantity;
-    let loanedAmount = 0;
-  
-    // Check for selected financier and validate loan amount
-    if (selectedFinancier && loanAmount) {
-      loanedAmount = parseFloat(loanAmount);
-      const financier = getProfileById(selectedFinancier);
-  
-      if (financier) {
-        // Check if the financier has enough funds
-        if (financier.balance >= loanedAmount) {
-          // Deduct the loan amount from the financier's balance
-          updateProfileBalance(financier.id, financier.balance - loanedAmount);
-  
-          // Add the loan amount to the trader's balance
-          updateProfileBalance(currentProfile.id, currentProfile.balance + loanedAmount);
-  
-          // Register the loan in the trader's profile under loans
-          const updatedLoans = {
-            ...currentProfile.loans,
-            [financier.id]: ((currentProfile.loans?.[financier.id] || 0) + loanedAmount),
-          };
-          currentProfile.loans = updatedLoans;
-  
-          // Add the loan transaction
+
+    const totalAmount = transactionDetails.price * transactionDetails.quantity
+    const loanedAmount = selectedFinancier && loanAmount ? parseFloat(loanAmount) : 0
+
+    const proceedWithPurchase = () => {
+      if (transactionDetails.type === 'buy') {
+        if (currentProfile.balance >= totalAmount) {
+          updateProfileBalance(currentProfile.id, currentProfile.balance - totalAmount)
+          updateProfileBalance(counterparty.id, counterparty.balance + totalAmount)
+
           addTransaction({
-            type: 'finance',
-            commodity: 'Loan',
-            quantity: 1,
-            price: loanedAmount,
-            total: loanedAmount,
+            type: 'buy',
+            commodity: transactionDetails.commodity,
+            quantity: transactionDetails.quantity,
+            price: transactionDetails.price,
+            total: totalAmount,
             buyerId: currentProfile.id,
-            sellerId: '',
-            financierId: financier.id,
+            sellerId: counterparty.id,
+            financierId: selectedFinancier || undefined,
             loanAmount: loanedAmount,
-          });
+          })
+
+          router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
         } else {
-          setError('Insufficient financier balance for loan');
-          return;
+          setError('Insufficient balance for purchase')
         }
-      } else {
-        setError('Financier not found');
-        return;
-      }
-    }
-  
-    // Proceed with the purchase transaction if the trader has enough balance after the loan
-    if (transactionDetails.type === 'buy') {
-      if (currentProfile.balance >= totalAmount) {
-        // Deduct the purchase amount from the trader's balance
-        updateProfileBalance(currentProfile.id, currentProfile.balance - totalAmount);
-        
-        // Add the purchase amount to the counterparty's balance
-        updateProfileBalance(counterparty.id, counterparty.balance + totalAmount);
-  
-        // Register the buy transaction
+      } else if (transactionDetails.type === 'sell') {
+        updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount)
+        updateProfileBalance(counterparty.id, counterparty.balance - totalAmount)
+
         addTransaction({
-          type: 'buy',
+          type: 'sell',
           commodity: transactionDetails.commodity,
           quantity: transactionDetails.quantity,
           price: transactionDetails.price,
           total: totalAmount,
-          buyerId: currentProfile.id,
-          sellerId: counterparty.id,
+          buyerId: counterparty.id,
+          sellerId: currentProfile.id,
           financierId: selectedFinancier || undefined,
           loanAmount: loanedAmount,
-        });
-  
-        // Redirect to success page
-        router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`);
-      } else {
-        setError('Insufficient balance for purchase');
+        })
+
+        router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
       }
-    } else if (transactionDetails.type === 'sell') {
-      // Process a sell transaction if it's a sell
-      updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount);
-      updateProfileBalance(counterparty.id, counterparty.balance - totalAmount);
-  
-      // Register the sell transaction
-      addTransaction({
-        type: 'sell',
-        commodity: transactionDetails.commodity,
-        quantity: transactionDetails.quantity,
-        price: transactionDetails.price,
-        total: totalAmount,
-        buyerId: counterparty.id,
-        sellerId: currentProfile.id,
-        financierId: selectedFinancier || undefined,
-        loanAmount: loanedAmount,
-      });
-  
-      // Redirect to success page
-      router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`);
     }
-  };
-  
-  
-  
+
+    proceedWithPurchase()
+  }
 
   const financiers = profiles.filter(p => p.type === 'financier')
 
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-8">
+  return (
+    <div className="container mx-auto px-4 py-8">
+      {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-        <Button className="mt-4" onClick={() => router.push('/admin')}>Back to Admin</Button>
-      </div>
-    )
-  }
-
-  if (!counterparty) {
-    return <div>Loading...</div>
-  }
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Transaction with {counterparty.name}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center space-x-4">
-          <Avatar>
-            <AvatarFallback>{counterparty.name.charAt(0)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="font-medium">{counterparty.name}</p>
-            <p className="text-sm text-muted-foreground">Trader ID: {counterparty.id}</p>
-          </div>
-        </CardContent>
-      </Card>
+      )}
 
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Transaction Details</CardTitle>
+          <CardTitle>Transaction with {counterparty?.name}</CardTitle>
         </CardHeader>
         <CardContent>
           <p>Type: {transactionDetails.type.toUpperCase()}</p>
@@ -271,7 +223,7 @@ export default function TransactionPage() {
               <SelectValue placeholder="Select a financier" />
             </SelectTrigger>
             <SelectContent>
-              {financiers.map((financier) => (
+              {financiers.map(financier => (
                 <SelectItem key={financier.id} value={financier.id}>
                   {financier.name}
                 </SelectItem>
@@ -280,9 +232,7 @@ export default function TransactionPage() {
           </Select>
           {selectedFinancier && (
             <div className="mt-4">
-              <p className="mb-2 text-sm text-muted-foreground">
-                Financier Balance: ${getProfileById(selectedFinancier)?.balance.toFixed(2)}
-              </p>
+              <p>Financier Balance: ${getProfileById(selectedFinancier)?.balance.toFixed(2)}</p>
               <Input
                 type="number"
                 placeholder="Loan Amount"
@@ -292,6 +242,7 @@ export default function TransactionPage() {
               />
             </div>
           )}
+          <Button className="mt-4 w-full" onClick={requestLoan}>Request Loan</Button>
         </CardContent>
       </Card>
 
@@ -316,7 +267,7 @@ export default function TransactionPage() {
         </CardContent>
       </Card>
 
-      <Button className="w-full" onClick={handleTransaction}>Proceed with Transaction</Button>
+      <Button className="w-full mt-4" onClick={handleTransaction}>Proceed with Transaction</Button>
     </div>
   )
 }
