@@ -16,7 +16,7 @@ export default function TransactionPage() {
   // const { id } = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { profiles, currentProfile, updateProfileBalance, getProfileById, updateFinancierFunds } = useProfiles()
+  const { profiles, currentProfile, updateProfileBalance, getProfileById } = useProfiles()
   const { addTransaction } = useTransactions()
   const [selectedFinancier, setSelectedFinancier] = useState('')
   const [loanAmount, setLoanAmount] = useState('')

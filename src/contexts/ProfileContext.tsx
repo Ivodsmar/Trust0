@@ -6,6 +6,7 @@ export type Interest = {
   buy: string[];
   sell: string[];
   finance: string[];
+  inUseFunds?: number;
 };
 
 export type Profile = {
@@ -19,6 +20,7 @@ export type Profile = {
   totalFunds?: number;
   availableFunds?: number;
   loans?: { [financierId: string]: number };
+  inUseFunds?: number;
 };
 
 type ProfileContextType = {
@@ -118,24 +120,28 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       prevProfiles.map((profile) => {
         if (profile.id === financierId && profile.type === 'financier') {
           if (profile.availableFunds && profile.availableFunds >= loanAmount) {
+            const newInUseFunds = (profile.inUseFunds || 0) + loanAmount;
             return {
               ...profile,
-              balance: profile.balance - loanAmount, // Subtrai do balance do financier
-              availableFunds: profile.availableFunds - loanAmount, // Subtrai do availableFunds
+              balance: profile.balance - loanAmount,
+              availableFunds: profile.availableFunds - loanAmount,
+              inUseFunds: newInUseFunds,
             };
           } else {
-            console.error("O financier não possui fundos suficientes.");
-            return profile; // Retorna sem mudanças se não houver fundos
+            console.error("O financiador não possui fundos suficientes.");
+            return profile;
           }
         }
   
         if (profile.id === traderId && profile.type === 'trader') {
+          const updatedLoans = {
+            ...profile.loans,
+            [financierId]: (profile.loans?.[financierId] || 0) + loanAmount,
+          };
           return {
             ...profile,
-            loans: {
-              ...profile.loans,
-              [financierId]: (profile.loans?.[financierId] || 0) + loanAmount, // Adiciona ao empréstimo do trader
-            },
+            loans: updatedLoans,
+            balance: profile.balance + loanAmount, // Adiciona o valor do empréstimo ao balance do trader
           };
         }
   
@@ -143,6 +149,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       })
     );
   };
+  
   
 
   const repayLoan = (traderId: string, financierId: string, amount: number) => {

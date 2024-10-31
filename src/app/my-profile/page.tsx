@@ -31,7 +31,11 @@ export default function MyProfilePage() {
     if (currentProfile) {
       setEditedProfile(currentProfile)
       loadLoansFromStorage(currentProfile.id)
+      if (currentProfile.loans) {
+        setCurrentLoans(currentProfile.loans);
+      }
     }
+
   }, [currentProfile])
 
   const loadLoansFromStorage = (profileId: string) => {
@@ -262,7 +266,7 @@ export default function MyProfilePage() {
               {editedProfile.interests && Object.entries(editedProfile.interests).map(([type, interests]) => (
                 <div key={type} className="mb-2">
                   <span className="font-medium capitalize">{type}: </span>
-                  {interests.map((interest, index) => (
+                  {Array.isArray(interests) && interests.map((interest, index) => (
                     <Badge key={`${type}-${interest}-${index}`} variant="secondary" className="mr-1">
                       {interest}
                       {isEditing && (
