@@ -34,6 +34,7 @@ type ProfileContextType = {
   updateFinancierFunds: (traderId: string, financierId: string, loanAmount: number) => void;
   updateProfileInterests: (id: string, newInterests: Interest) => void;
   repayLoan: (traderId: string, financierId: string, amount: number) => void;
+  updateProfileLoans: (traderId: string, loans: { [financierId: string]: number }) => void; // new function
 };
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -70,7 +71,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [profiles, currentProfile]);
 
   useEffect(() => {
-    // Persist profiles to localStorage every time they change
     if (typeof window !== 'undefined') {
       localStorage.setItem('profiles', JSON.stringify(profiles));
     }
@@ -110,7 +110,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setProfiles(prevProfiles => [...prevProfiles, newProfile])
   }
 
-
   const getProfileById = (id: string) => {
     return profiles.find(profile => profile.id === id)
   }
@@ -132,7 +131,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             return profile;
           }
         }
-  
+
         if (profile.id === traderId && profile.type === 'trader') {
           const updatedLoans = {
             ...profile.loans,
@@ -141,16 +140,14 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return {
             ...profile,
             loans: updatedLoans,
-            balance: profile.balance + loanAmount, // Adiciona o valor do empréstimo ao balance do trader
+            balance: profile.balance + loanAmount,
           };
         }
-  
+
         return profile;
       })
     );
   };
-  
-  
 
   const repayLoan = (traderId: string, financierId: string, amount: number) => {
     setProfiles(prevProfiles =>
@@ -170,8 +167,16 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       })
     );
   };
-  
-  
+
+  const updateProfileLoans = (traderId: string, loans: { [financierId: string]: number }) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile =>
+        profile.id === traderId && profile.type === 'trader'
+          ? { ...profile, loans: { ...profile.loans, ...loans } }
+          : profile
+      )
+    );
+  };
 
   const updateProfileInterests = (id: string, newInterests: Interest) => {
     setProfiles(prevProfiles =>
@@ -199,7 +204,8 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         getProfileById,
         updateFinancierFunds,
         updateProfileInterests,
-        repayLoan
+        repayLoan,
+        updateProfileLoans // added to context
       }}
     >
       {children}

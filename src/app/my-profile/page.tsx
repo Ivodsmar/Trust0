@@ -32,10 +32,9 @@ export default function MyProfilePage() {
       setEditedProfile(currentProfile)
       loadLoansFromStorage(currentProfile.id)
       if (currentProfile.loans) {
-        setCurrentLoans(currentProfile.loans);
+        setCurrentLoans(currentProfile.loans)
       }
     }
-
   }, [currentProfile])
 
   const loadLoansFromStorage = (profileId: string) => {
@@ -80,7 +79,6 @@ export default function MyProfilePage() {
   const transactions = getTransactionsByProfile(currentProfile.id)
   const transactionVolume = transactions.reduce((sum, t) => sum + t.total, 0)
 
-  // Filter out fully repaid loans
   const outstandingLoans = Object.entries(currentLoans).filter(([, amount]) => amount > 0)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

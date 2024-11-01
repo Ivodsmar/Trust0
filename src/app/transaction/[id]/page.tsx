@@ -1,4 +1,3 @@
-
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -22,7 +21,7 @@ interface Profile {
 export default function TransactionPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { profiles, currentProfile, updateProfileBalance, getProfileById } = useProfiles()
+  const { profiles, currentProfile, updateProfileBalance, updateProfileLoans, getProfileById } = useProfiles()
   const { addTransaction } = useTransactions()
   const [selectedFinancier, setSelectedFinancier] = useState('')
   const [loanAmount, setLoanAmount] = useState('')
@@ -113,6 +112,10 @@ export default function TransactionPage() {
     if (financier && financier.balance >= loanedAmount) {
       updateProfileBalance(financier.id, financier.balance - loanedAmount)
       updateProfileBalance(currentProfile!.id, currentProfile!.balance + loanedAmount)
+
+      // Update the loans in the current profile
+      const newLoanData = { [financier.id]: loanedAmount }
+      updateProfileLoans(currentProfile!.id, newLoanData)
 
       addTransaction({
         type: 'finance',
