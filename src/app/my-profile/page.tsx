@@ -10,7 +10,6 @@ import { Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function MyProfilePage() {
-  const { currentProfile, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
   const { profiles, currentProfile, updateProfileBalance, repayLoan } = useProfiles()
   const router = useRouter()
   const { getTransactionsByProfile, addTransaction } = useTransactions()
