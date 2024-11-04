@@ -29,14 +29,6 @@ interface TransactionContextType {
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined)
 
-export const useTransactions = () => {
-  const context = useContext(TransactionContext)
-  if (!context) {
-    throw new Error('useTransactions must be used within a TransactionProvider')
-  }
-  return context
-}
-
 export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     if (typeof window !== 'undefined') {
@@ -46,6 +38,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return []
   })
 
+  // Save transactions to localStorage whenever they change
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('transactions', JSON.stringify(transactions))
@@ -55,10 +48,26 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const addTransaction = (transaction: Omit<Transaction, 'id' | 'date'>) => {
     const newTransaction: Transaction = {
       ...transaction,
-      id: Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      date: new Date().toISOString().split('T')[0]
     }
+
     setTransactions(prevTransactions => [...prevTransactions, newTransaction])
+
+    // Update localStorage for loans if it's a loan-related transaction
+    if (transaction.loanAmount && transaction.loanAmount > 0) {
+      const loansKey = `loans_${transaction.buyerId}`
+      const storedLoans = JSON.parse(localStorage.getItem(loansKey) || '{}')
+      if (transaction.type === 'buy') {
+        storedLoans[transaction.financierId!] = (storedLoans[transaction.financierId!] || 0) + transaction.loanAmount
+      } else if (transaction.type === 'repay') {
+        storedLoans[transaction.financierId!] = (storedLoans[transaction.financierId!] || 0) - transaction.loanAmount
+        if (storedLoans[transaction.financierId!] <= 0) {
+          delete storedLoans[transaction.financierId!]
+        }
+      }
+      localStorage.setItem(loansKey, JSON.stringify(storedLoans))
+    }
   }
 
   const getTransactionsByProfile = (profileId: string) => {
@@ -101,4 +110,12 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       {children}
     </TransactionContext.Provider>
   )
+}
+
+export const useTransactions = () => {
+  const context = useContext(TransactionContext)
+  if (context === undefined) {
+    throw new Error('useTransactions must be used within a TransactionProvider')
+  }
+  return context
 }
