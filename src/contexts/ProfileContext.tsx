@@ -144,6 +144,29 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   };
 
+<<<<<<< Updated upstream
+=======
+  interface Loans {
+    [financierId: string]: number;
+  }
+
+  const updateProfileLoans = (profileId: string, loans: Loans) => {
+    setProfiles(prevProfiles =>
+      prevProfiles.map(profile =>
+        profile.id === profileId
+          ? { ...profile, loans: { ...profile.loans, ...loans } }
+          : profile
+      )
+    );
+    
+    // Atualiza o currentLoans se o profileId corresponder ao perfil atual
+    if (currentProfile && currentProfile.id === profileId) {
+      setCurrentLoans(prevLoans => ({ ...prevLoans, ...loans }));
+    }
+  };
+
+
+>>>>>>> Stashed changes
   const updateProfileInterests = (id: string, newInterests: Interest) => {
     setProfiles(prevProfiles =>
       prevProfiles.map(profile =>
@@ -177,3 +200,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     </ProfileContext.Provider>
   );
 };
+function setCurrentLoans(arg0: (prevLoans: any) => any) {
+  throw new Error('Function not implemented.');
+}
+

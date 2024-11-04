@@ -1,32 +1,37 @@
 'use client'
 
+<<<<<<< Updated upstream
 import React, { useState, useEffect, useCallback } from 'react'
 import { useProfiles, Profile } from '@/contexts/ProfileContext'
 import { useTransactions, Transaction } from '@/contexts/TransactionContext'
+=======
+import React, { useState, useEffect } from 'react'
+import { useProfiles } from '@/contexts/ProfileContext'
+import { useTransactions } from '@/contexts/TransactionContext'
+>>>>>>> Stashed changes
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Star, Edit2, Save, AlertCircle } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-
-type InterestType = 'buy' | 'sell' | 'finance'
+import { Star } from 'lucide-react'
 
 export default function MyProfilePage() {
+<<<<<<< Updated upstream
   const { currentProfile, setProfiles, updateProfileBalance, updateProfileInterests, repayLoan } = useProfiles()
   const { getTransactionsByProfile, getTotalLoanedAmount } = useTransactions()
   const [isEditing, setIsEditing] = useState(false)
   const [editedProfile, setEditedProfile] = useState(currentProfile)
   const [newInterest, setNewInterest] = useState({ type: 'buy' as InterestType, value: '' })
+=======
+  const { profiles, currentProfile, repayLoan } = useProfiles()
+  const { getTransactionsByProfile, addTransaction } = useTransactions()
+>>>>>>> Stashed changes
   const [repaymentAmount, setRepaymentAmount] = useState<{ [key: string]: number }>({})
   const [error, setError] = useState<string | null>(null)
   const [currentLoans, setCurrentLoans] = useState<{ [key: string]: number }>({})
 
+<<<<<<< Updated upstream
   const updateLoans = useCallback(() => {
     if (currentProfile) {
       const transactions = getTransactionsByProfile(currentProfile.id)
@@ -65,10 +70,69 @@ export default function MyProfilePage() {
   if (!currentProfile || !editedProfile) {
     return <div>Loading...</div>
   }
+=======
+  useEffect(() => {
+    if (currentProfile) {
+      const storedLoans = JSON.parse(localStorage.getItem(`loans_${currentProfile.id}`) || '{}')
+      setCurrentLoans(storedLoans)
+    }
+  }, [currentProfile])
 
+  const handleRepayment = (financierId: string) => {
+    const amount = parseFloat(repaymentAmount[financierId]?.toFixed(2)) || 0;
+    const outstandingLoan = currentLoans[financierId] || 0;  // Certifique-se de que o valor atual está sendo lido
+
+    console.log("Attempting to repay loan:", { amount, outstandingLoan, balance: currentProfile?.balance });
+
+    if (amount > 0 && amount <= outstandingLoan) {
+      if (currentProfile && amount > currentProfile.balance) {
+        setError("Insufficient balance for repayment");
+        return;
+      }
+
+      // Atualiza o valor do empréstimo após o pagamento
+      const newLoanAmount = outstandingLoan - amount;
+      if (currentProfile) {
+        repayLoan(currentProfile.id, financierId, amount);
+      }
+
+      // Atualiza o estado do empréstimo
+      setCurrentLoans(prevLoans => {
+        const updatedLoans = { ...prevLoans, [financierId]: parseFloat(newLoanAmount.toFixed(2)) };
+        if (updatedLoans[financierId] <= 0) delete updatedLoans[financierId]; // Remove se o saldo for zero
+        return updatedLoans;
+      });
+
+      if (currentProfile) {
+        addTransaction({
+          type: 'repay',
+          commodity: 'Loan Repayment',
+          quantity: 1,
+          price: amount,
+          total: amount,
+          buyerId: currentProfile.id,
+          sellerId: financierId,
+          financierId,
+          loanAmount: amount,
+        });
+      }
+
+      setRepaymentAmount(prev => ({ ...prev, [financierId]: 0 }));
+      setError(null);
+    } else {
+      setError("Invalid repayment amount or exceeds outstanding loan");
+    }
+  };
+  
+
+  if (!currentProfile) return <div>Loading...</div>
+>>>>>>> Stashed changes
+
+  // Ensure these are only declared once
   const transactions = getTransactionsByProfile(currentProfile.id)
   const totalLoanedAmount = getTotalLoanedAmount(currentProfile.id)
   const transactionVolume = transactions.reduce((sum, t) => sum + t.total, 0)
+<<<<<<< Updated upstream
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -177,57 +241,23 @@ export default function MyProfilePage() {
   const availableFunds = currentProfile.availableFunds || currentProfile.balance
   const totalFunds = currentProfile.totalFunds || currentProfile.balance
   const usedFundsPercentage = currentProfile.type === 'financier' ? ((totalLoanedAmount / totalFunds) * 100) : 0
+=======
+  const isFinancier = currentProfile.type === 'financier'
+  const outstandingLoans = Object.entries(currentLoans).filter(([, amount]) => amount > 0)
+  const usedFundsPercentage = isFinancier && currentProfile.totalFunds ? (transactionVolume / currentProfile.totalFunds) * 100 : 0
+>>>>>>> Stashed changes
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      
+      {error && <p className="text-red-500">{error}</p>}
+
+      {/* Profile Details */}
       <Card className="mb-8">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Avatar className="h-20 w-20">
-              <AvatarImage src={`/placeholder.svg?height=100&width=100`} alt={currentProfile.name} />
-              <AvatarFallback>{currentProfile.name.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <div>
-              <CardTitle className="text-2xl">
-                {isEditing ? (
-                  <Input
-                    name="name"
-                    value={editedProfile.name}
-                    onChange={handleInputChange}
-                    className="mt-1"
-                  />
-                ) : (
-                  currentProfile.name
-                )}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">User ID: {currentProfile.id}</p>
-              <p className="text-sm text-muted-foreground">Type: {currentProfile.type}</p>
-              <p className="text-sm font-semibold">Balance: ${editedProfile.balance.toFixed(2)}</p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={() => isEditing ? handleSave() : setIsEditing(true)}>
-            {isEditing ? (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Save
-              </>
-            ) : (
-              <>
-                <Edit2 className="mr-2 h-4 w-4" />
-                Edit Profile
-              </>
-            )}
-          </Button>
+        <CardHeader>
+          <CardTitle>{currentProfile.name} - {currentProfile.type}</CardTitle>
         </CardHeader>
         <CardContent>
+<<<<<<< Updated upstream
           <div className="space-y-4">
             <div>
               <Label htmlFor="email">Email</Label>
@@ -312,16 +342,42 @@ export default function MyProfilePage() {
                 </form>
               )}
             </div>
+=======
+          <p>Email: {currentProfile.email || "Not provided"}</p>
+          <p>Bio: {currentProfile.bio || "No bio available"}</p>
+          <p>Balance: ${currentProfile.balance.toFixed(2)}</p>
+        </CardContent>
+      </Card>
+
+      {/* Trust Rank */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle>Trust Rank</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center">
+            <Star className="text-yellow-400 mr-1" />
+            <span className="text-xl font-bold">4.5</span>
+            <span className="text-sm text-muted-foreground ml-2">
+              (Based on ${transactionVolume.toLocaleString()} USD transaction volume)
+            </span>
+>>>>>>> Stashed changes
           </div>
         </CardContent>
       </Card>
 
+<<<<<<< Updated upstream
       {currentProfile.type === 'trader' && Object.keys(currentLoans).length > 0 && (
+=======
+      {/* Financing Overview (Financier) */}
+      {isFinancier && (
+>>>>>>> Stashed changes
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle>Current Loans</CardTitle>
+            <CardTitle>Financing Overview</CardTitle>
           </CardHeader>
           <CardContent>
+<<<<<<< Updated upstream
             <Table>
               <TableHeader>
                 <TableRow>
@@ -351,10 +407,84 @@ export default function MyProfilePage() {
                 ))}
               </TableBody>
             </Table>
+=======
+            <Progress value={usedFundsPercentage} className="w-full" />
+            <div className="flex justify-between mt-2">
+              <span>Available: ${currentProfile.availableFunds?.toFixed(2)}</span>
+              <span>In Use: ${transactionVolume.toFixed(2)}</span>
+              <span>Total: ${currentProfile.totalFunds?.toFixed(2)}</span>
+            </div>
+>>>>>>> Stashed changes
           </CardContent>
         </Card>
       )}
 
+      {/* Loans Section */}
+{!isFinancier ? (
+  <Card className="mb-8">
+    <CardHeader>
+      <CardTitle>Current Loans</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Financier</TableHead>
+            <TableHead>Amount Owed</TableHead>
+            <TableHead>Repay</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Object.entries(currentProfile.loans || {}).map(([financierId, amount]) => (
+            <TableRow key={financierId}>
+              <TableCell>{profiles.find(p => p.id === financierId)?.name || financierId}</TableCell>
+              <TableCell>${amount.toFixed(2)}</TableCell>
+              <TableCell>
+                <Input
+                  type="number"
+                  placeholder="Amount to repay"
+                  step={0.01}
+                  value={repaymentAmount[financierId] || ''}
+                  onChange={(e) => setRepaymentAmount(prev => ({ ...prev, [financierId]: parseFloat(e.target.value) }))}
+                  className="w-24 mr-2"
+                />
+                <Button onClick={() => handleRepayment(financierId)}>Repay</Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent>
+  </Card>
+) : (
+  <Card className="mb-8">
+    <CardHeader>
+      <CardTitle>Loans Given</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Trader</TableHead>
+            <TableHead>Amount Owed</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Object.entries(currentProfile.loans || {}).map(([traderId, amount]) => {
+            const trader = profiles.find(p => p.id === traderId);
+            return (
+              <TableRow key={traderId}>
+                <TableCell>{trader ? trader.name : traderId}</TableCell>
+                <TableCell>${amount.toFixed(2)}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </CardContent>
+  </Card>
+)}
+      {/* Transaction History */}
       <Card>
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
@@ -394,4 +524,19 @@ export default function MyProfilePage() {
       </Card>
     </div>
   )
+<<<<<<< Updated upstream
 }
+=======
+}
+function updateProfileLoans(profileId: string, updatedLoans: { [key: string]: number }) {
+  const storedProfiles = JSON.parse(localStorage.getItem('profiles') || '{}');
+  const profile = storedProfiles[profileId];
+
+  if (profile) {
+    profile.loans = updatedLoans;
+    storedProfiles[profileId] = profile;
+    localStorage.setItem('profiles', JSON.stringify(storedProfiles));
+  }
+}
+
+>>>>>>> Stashed changes

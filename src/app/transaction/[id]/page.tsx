@@ -4,10 +4,14 @@ import React, { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+<<<<<<< Updated upstream
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { AlertCircle, Upload } from 'lucide-react'
+=======
+import { AlertCircle } from 'lucide-react'
+>>>>>>> Stashed changes
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useProfiles } from '@/contexts/ProfileContext'
 import { useTransactions } from '@/contexts/TransactionContext'
@@ -16,13 +20,12 @@ export default function TransactionPage() {
   // const { id } = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
+<<<<<<< Updated upstream
   const { profiles, currentProfile, updateProfileBalance, getProfileById, updateFinancierFunds } = useProfiles()
+=======
+  const { profiles, currentProfile, updateProfileBalance, updateProfileLoans } = useProfiles()
+>>>>>>> Stashed changes
   const { addTransaction } = useTransactions()
-  const [selectedFinancier, setSelectedFinancier] = useState('')
-  const [loanAmount, setLoanAmount] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [transactionDetails, setTransactionDetails] = useState({
     type: '',
     price: 0,
@@ -41,14 +44,14 @@ export default function TransactionPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setTransactionDetails({
-      type: searchParams.get('type') || '',
-      price: Number(searchParams.get('price')) || 0,
-      quantity: Number(searchParams.get('quantity')) || 0,
-      commodity: searchParams.get('commodity') || '',
-      traderName: searchParams.get('traderName') || '',
-    })
+    // Inicializar detalhes da transação a partir dos parâmetros de busca
+    const type = searchParams.get('type') || ''
+    const price = Number(searchParams.get('price')) || 0
+    const quantity = Number(searchParams.get('quantity')) || 0
+    const commodity = searchParams.get('commodity') || ''
+    const traderName = searchParams.get('traderName') || ''
 
+<<<<<<< Updated upstream
     const traderName = searchParams.get('traderName')
     if (traderName) {
       const foundCounterparty = profiles.find(p => p.name === traderName)
@@ -106,6 +109,19 @@ export default function TransactionPage() {
     }
   }
 
+=======
+    setTransactionDetails({ type, price, quantity, commodity, traderName })
+
+    // Encontrar o contraparte com base no nome do trader
+    const foundCounterparty = profiles.find(p => p.name === traderName)
+    setCounterparty(foundCounterparty || null)
+
+    if (!foundCounterparty) {
+      setError(`Counterparty not found for name: ${traderName}`)
+    }
+  }, [searchParams, profiles])
+
+>>>>>>> Stashed changes
   const handleTransaction = () => {
     if (!currentProfile || !counterparty) {
       setError('Current profile or counterparty not found')
@@ -113,6 +129,7 @@ export default function TransactionPage() {
     }
 
     const totalAmount = transactionDetails.price * transactionDetails.quantity
+<<<<<<< Updated upstream
     let loanedAmount = 0
 
     if (selectedFinancier && loanAmount) {
@@ -126,6 +143,52 @@ export default function TransactionPage() {
         return
       }
     }
+=======
+    const financier = profiles.find(p => p.type === 'financier') // Assumindo que existe apenas um financiador
+
+    if (!financier) {
+      setError("No financier available to cover transaction costs.")
+      return
+    }
+
+    if (transactionDetails.type === 'buy') {
+      if (financier.balance >= totalAmount) {
+        // Deduzir fundos do financiador e criar um empréstimo para o trader
+        updateProfileBalance(financier.id, financier.balance - totalAmount)
+        
+        // Adicionar uma entrada de empréstimo para o trader
+        updateProfileLoans(currentProfile.id, {
+          ...currentProfile.loans, // Preserve existing loans
+          [financier.id]: (currentProfile.loans?.[financier.id] || 0) + totalAmount, // Add to existing loan or initialize
+        })
+
+        updateProfileLoans(financier.id, { [currentProfile.id]: totalAmount });
+
+        // Registar a transação
+        addTransaction({
+          type: 'buy',
+          commodity: transactionDetails.commodity,
+          quantity: transactionDetails.quantity,
+          price: transactionDetails.price,
+          total: totalAmount,
+          buyerId: currentProfile.id,
+          sellerId: counterparty.id,
+          financierId: financier.id,
+          loanAmount: totalAmount,
+        })
+
+        alert(`Trader ${currentProfile.name} received $${totalAmount} as a loan from ${financier.name} to complete the transaction.`)
+        setError(null)
+        router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
+      } else {
+        setError("Insufficient funds in financier's account to cover the transaction.")
+      }
+    } else if (transactionDetails.type === 'sell') {
+      // Processa a transação de venda normalmente, sem envolvimento de empréstimo
+      if (currentProfile.balance >= totalAmount) {
+        updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount)
+        updateProfileBalance(counterparty.id, counterparty.balance - totalAmount)
+>>>>>>> Stashed changes
 
     if (transactionDetails.type === 'buy') {
       if (currentProfile.balance >= totalAmount) {
@@ -137,10 +200,17 @@ export default function TransactionPage() {
           quantity: transactionDetails.quantity,
           price: transactionDetails.price,
           total: totalAmount,
+<<<<<<< Updated upstream
           buyerId: currentProfile.id,
           sellerId: counterparty.id,
           financierId: selectedFinancier || undefined,
           loanAmount: loanedAmount,
+=======
+          buyerId: counterparty.id,
+          sellerId: currentProfile.id,
+          financierId: financier.id,
+          loanAmount: 0, // Sem empréstimo em uma transação de venda
+>>>>>>> Stashed changes
         })
         if (loanedAmount > 0) {
           addTransaction({
@@ -157,7 +227,11 @@ export default function TransactionPage() {
         }
         router.push(`/transaction-success?type=${transactionDetails.type}&commodity=${transactionDetails.commodity}&quantity=${transactionDetails.quantity}&price=${transactionDetails.price}`)
       } else {
+<<<<<<< Updated upstream
         setError('Insufficient balance')
+=======
+        setError("Insufficient balance in buyer's account for transaction.")
+>>>>>>> Stashed changes
       }
     } else if (transactionDetails.type === 'sell') {
       updateProfileBalance(currentProfile.id, currentProfile.balance + totalAmount)
@@ -190,7 +264,7 @@ export default function TransactionPage() {
     }
   }
 
-  const financiers = profiles.filter(p => p.type === 'financier')
+  const financier = profiles.find(p => p.type === 'financier') // Assumindo que existe apenas um financiador
 
   if (error) {
     return (
@@ -237,9 +311,9 @@ export default function TransactionPage() {
           <p>Quantity: {transactionDetails.quantity}</p>
           <p>Total Amount: ${transactionDetails.price * transactionDetails.quantity}</p>
           <p>Your Balance: ${currentProfile?.balance.toFixed(2)}</p>
-        </CardContent>
-      </Card>
+          <p>Financier Balance: ${financier?.balance.toFixed(2) || '0.00'}</p>
 
+<<<<<<< Updated upstream
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Financier Loan</CardTitle>
@@ -292,6 +366,8 @@ export default function TransactionPage() {
               <AlertDescription>{analysisResult}</AlertDescription>
             </Alert>
           )}
+=======
+>>>>>>> Stashed changes
         </CardContent>
       </Card>
 
