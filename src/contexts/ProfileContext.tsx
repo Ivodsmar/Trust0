@@ -35,34 +35,29 @@ interface ProfileContextType {
 }
 
 const initialProfiles: Profile[] = [
-  {
-    id: '1',
-    name: 'John Trader',
-    email: 'john@trader.com',
-    bio: 'Experienced commodity trader',
-    balance: 10000,
-    type: 'trader',
-    interests: {
-      buy: ['Gold', 'Silver'],
-      sell: ['Copper'],
-      finance: []
-    }
+  { 
+    id: '1', 
+    name: 'Trader A', 
+    balance: 100000, 
+    type: 'trader', 
+    interests: { buy: ['Oil', 'Gold'], sell: ['Silver'], finance: [] }
   },
-  {
-    id: '2',
-    name: 'Sarah Finance',
-    email: 'sarah@finance.com',
-    bio: 'Professional financier',
-    balance: 1000000,
-    type: 'financier',
-    availableFunds: 1000000,
-    totalFunds: 1000000,
-    interests: {
-      buy: [],
-      sell: [],
-      finance: ['Gold', 'Silver', 'Copper']
-    }
-  }
+  { 
+    id: '2', 
+    name: 'Trader B', 
+    balance: 150000, 
+    type: 'trader', 
+    interests: { buy: ['Natural Gas'], sell: ['Copper'], finance: [] }
+  },
+  { 
+    id: '3', 
+    name: 'Financier X', 
+    balance: 500000, 
+    type: 'financier', 
+    totalFunds: 500000, 
+    availableFunds: 500000, 
+    interests: { buy: [], sell: [], finance: ['Invoice Financing', 'Trade Finance'] }
+  },
 ];
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
